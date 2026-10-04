@@ -1,5 +1,6 @@
 #本基础项目来自于https://github.com/p5y-Ph3R/Godswar-Reborn.
 
+未收到任何反馈，时间无法支持独自开发并测试，本次是最后一次更新，后续会继续开发，但不会更新到仓库
 
 If you're willing to help me, please contact hejing900@outlook.com
 
