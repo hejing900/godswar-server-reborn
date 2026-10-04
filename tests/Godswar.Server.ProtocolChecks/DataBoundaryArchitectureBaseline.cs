@@ -54,6 +54,7 @@ internal static class DataBoundaryArchitectureBaseline
             "ApplyWeaponHolyStoneAsync",
             1),
         new("Game/GameClientHandler.Progression.cs", "ApplyMonsterKillRewardAsync", 1),
+        new("Game/GameClientHandler.ZeusGift.cs", "ApplyMonsterKillRewardAsync", 1),
         new(
             "Game/GameSessionRegistry.CharacterCheckpoints.cs",
             "SaveCharacterVitalsAsync",
@@ -96,6 +97,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.DurableCharacterLifecycle.cs", 2),
         new("Game/GameClientHandler.LegacyHolyStone.cs", 1),
         new("Game/GameClientHandler.Progression.cs", 1),
+        new("Game/GameClientHandler.ZeusGift.cs", 1),
         new("Game/GameSessionRegistry.CharacterCheckpoints.cs", 2),
         new("Game/GameSessionRegistry.cs", 2),
         new("Game/GameSessionRegistry.MountStatus.cs", 1),

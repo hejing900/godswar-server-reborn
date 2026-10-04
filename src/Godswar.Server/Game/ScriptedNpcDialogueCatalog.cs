@@ -342,7 +342,7 @@ internal sealed partial class GameClientHandler
     }
 
     /// <summary>Where a request carries the number typed into the input box.</summary>
-    private const int DialogAmountOffset = 0x38;
+    internal const int DialogAmountOffset = 0x38;
 
     /// <summary>
     /// The amount the player typed into the dialogue's own input box, or a

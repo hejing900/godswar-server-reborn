@@ -183,6 +183,13 @@ internal static partial class PostgresMigrationFoundationChecks
         "20260929_216_harbor_attack_daily_entry",
         "20260930_217_atlantis_partial_rewards",
         "20261001_218_atlantis_completion_roster_constraint",
-        "20261002_219_guild_refuse_applications"
+        "20261002_219_guild_refuse_applications",
+        "20261003_220_zeus_gift_daily_state",
+        "20261003_221_zeus_gift_weekly_state",
+        "20261003_222_zeus_gift_realm_stones",
+        "20261003_223_zeus_luck_entries",
+        "20261003_224_zeus_gift_limited_stock",
+        "20261003_225_zeus_gift_banked_reward",
+        "20261003_226_zeus_gift_limited_stock_camp"
     ];
 }

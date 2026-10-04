@@ -86,7 +86,9 @@ internal static class HarborAttackEntryProtocolChecks
 
         var head = PostgresSchemaMigrationCatalog.All[^1];
         Check.True(
-            head.Id == "20261002_219_guild_refuse_applications" &&
+            head.Id == "20261003_226_zeus_gift_limited_stock_camp" &&
+            PostgresSchemaMigrationCatalog.All.Any(migration =>
+                migration.Id == "20261002_219_guild_refuse_applications") &&
             PostgresSchemaMigrationCatalog.All.Any(migration =>
                 migration.Id == "20261001_218_atlantis_completion_roster_constraint") &&
             PostgresSchemaMigrationCatalog.All.Any(migration =>

@@ -58,6 +58,9 @@ services:
       GODSWAR_MANAGEMENT_ENABLED: "true"
       GODSWAR_MANAGEMENT_BIND_HOST: "127.0.0.1"
       GODSWAR_MANAGEMENT_PORT: "9090"
+      # Test switch for the Zeus gift event. Off keeps the client's own rule that
+      # praying stones are only taken Monday to Friday.
+      GODSWAR_ZEUS_STONE_ANY_DAY: ${GODSWAR_ZEUS_STONE_ANY_DAY:-false}
     ports:
       - "127.1.1.110:${GODSWAR_LOGIN_HOST_PORT:-5999}:5999"
       - "127.1.1.110:${GODSWAR_GAME_HOST_PORT:-7000}:7000"

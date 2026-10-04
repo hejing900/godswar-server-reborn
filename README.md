@@ -46,6 +46,9 @@ All pet skills and all pet features are implemented; guild building creation, wo
 
 修复宠物召回.
 修复更换装备没有删除旧世界呈现的问题.
+新增宙斯的献礼所有功能（每日献礼、每周祈祷石、忠诚信徒与祈祷圣徒两处 NPC 对话、等级与时间窗限制、代替品与概率、两套货架、幸运 8 件套与 19 种粉尘、限量库存与全服祈祷石进度）.
+
+All Zeus Gift features are added (daily gift, weekly prayer stone, the Loyal Devotee and Praying Saint NPC dialogues, level and time-window limits, substitutes and odds, two shelves, the 8-piece lucky set and 19 kinds of dust, limited stock, and server-wide prayer stone progress).
 
 Pet recall is fixed. Replacing equipment no longer leaves the old world presence behind.
 
@@ -315,6 +318,7 @@ Implemented:
 - Guilds: all guild system features are fully restored, including join applications and approval, guild list and profile, member and duty management, leaving and disbanding, proclamation and guild text, donations and funds, guild buildings, and altar worship with bonus settlement ([record](docs/工会系统技术文档.md))
 - Pets: pet recall is fixed
 - Equipment: replacing equipment now removes the previous world presence instead of leaving it behind
+- Zeus Gift: all features are implemented, including the daily gift, the weekly prayer stone, the Loyal Devotee and Praying Saint NPC dialogues, level and time-window limits, substitutes and odds, two shelves, the 8-piece lucky set and 19 kinds of dust, limited stock, and server-wide prayer stone progress ([analysis](docs/zeus-gift-capture-analysis.md), [dialogue](docs/zeus-gift-dialogue.md))
 
 The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The patches below cover separate extended-grade, rank, aura, talent, and native client-stability work.
 

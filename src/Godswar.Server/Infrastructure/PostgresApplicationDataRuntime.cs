@@ -31,6 +31,7 @@ using Godswar.Server.Infrastructure.Zodiac;
 using Godswar.Server.Infrastructure.World;
 using Godswar.Server.Infrastructure.Warehouse;
 using Godswar.Server.Infrastructure.WorldInstances;
+using Godswar.Server.Infrastructure.ZeusGift;
 using Godswar.Server.Infrastructure.WishingPool;
 using Godswar.Server.Infrastructure.LuckyGods;
 using Godswar.Server.Infrastructure.Guilds;
@@ -106,6 +107,7 @@ internal sealed class PostgresApplicationDataRuntime :
         WishingPoolUsage = new PostgresWishingPoolUsageStore(_dataSource);
         QuestAppraisal = new PostgresQuestAppraisalStore(_dataSource);
         LuckyGodsWish = new PostgresLuckyGodsWishStore(_dataSource);
+        ZeusGift = new PostgresZeusGiftStore(_dataSource);
         Guilds = new PostgresGuildStore(
             _dataSource,
             new PostgresGuildAltarContent(_dataSource));
@@ -329,6 +331,11 @@ internal sealed class PostgresApplicationDataRuntime :
     /// The divine wish's per-character streak and unclaimed prize pool.
     /// </summary>
     public PostgresLuckyGodsWishStore LuckyGodsWish { get; }
+
+    /// <summary>
+    /// The Zeus gift event's per-character delivery, praying-stone and luck state.
+    /// </summary>
+    public PostgresZeusGiftStore ZeusGift { get; }
 
     /// <summary>
     /// The guild tables behind the guild registrar.

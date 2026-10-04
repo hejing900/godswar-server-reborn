@@ -1,5 +1,10 @@
 # 宙斯献礼（Zeus' Gift Event）多级对话实现
 
+> **本文多处已被抓包推翻，请以 [zeus-gift-capture-analysis.md](zeus-gift-capture-analysis.md) 为准。**
+> 至少三处过时：功能列表不是 `[26, 6, 7]`（抓包实测 `[26]`，代码也早已改成 `[26]`）；
+> 第 4、5 页并非"不可达"；两个 NPC 的角色在本文里是反的
+> （抓包实测：`Athens_113` 是收献礼的那个，`Athens_114` 才收祈祷石）。
+
 NPC：`[Event]Zeus' Loyal Believer`，脚本名 `Athens_113` / `Sparta_113`，
 两首都坐标 `(154, -59, 3)`。
 功能号 `26`（客户端 `NpcFun.lua` 的 `NPC_FLAG_SYS_ZEUS`）。

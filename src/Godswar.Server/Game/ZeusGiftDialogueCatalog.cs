@@ -1,293 +1,262 @@
+using Godswar.Server.Application.ZeusGift;
+
 namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
     /// <summary>
-    /// What one number hands to the client's function window.
-    /// </summary>
-    /// <remarks>
-    /// The window decides everything else: the label, the position and whether it
-    /// closes. <see cref="ZeusDialogueKind.Result"/> is the one kind the script
-    /// ends with <c>NPCFUN:EndMessage(true)</c>, so a reply that carries it must
-    /// carry nothing else.
-    /// </remarks>
-    internal enum ZeusDialogueKind
-    {
-        /// <summary>A clickable entry.</summary>
-        Button,
-
-        /// <summary>A line of text that leaves the window open.</summary>
-        Text,
-
-        /// <summary>A line of text the script closes the window on.</summary>
-        Result
-    }
-
-    /// <summary>
-    /// One transcribed number of <c>NpcFunZeus.lua</c>. <see cref="LabelKey"/> is
-    /// the client text key the script draws for it, recorded so the transcription
-    /// can be checked against <c>LuaText.lua</c> without leaving this file.
-    /// </summary>
-    internal readonly record struct ZeusDialogueEntry(
-        ZeusDialogueKind Kind,
-        int SubId,
-        string LabelKey);
-
-    /// <summary>
-    /// The follower's function number, <c>NPC_FLAG_SYS_ZEUS</c> in the client's
-    /// own <c>NpcFun.lua</c>. It selects <c>NpcFunZeus_SetText</c>.
+    /// The event's function number, <c>NPC_FLAG_SYS_ZEUS = 26</c> in the client's
+    /// own <c>NpcFun.lua</c>. It is the only function either endpoint advertises:
+    /// all sixteen captured openings carry <c>flags = 0x200</c> and a one-entry
+    /// list, <c>[26]</c>, and the script name is the NPC's own key
+    /// (<c>Athens_113</c>, <c>Sparta_113</c>, <c>Athens_114</c>,
+    /// <c>Sparta_114</c>).
     /// </summary>
     private const int ZeusGiftFunctionNumber = 26;
 
     /// <summary>
-    /// The follower's function list. It holds one entry because the follower's
-    /// dialogue is a single script page sequence: the higher pages are reached by
-    /// answering with their numbers, never by opening another entry.
+    /// The function list both endpoints open with. The client dispatches on this
+    /// and the script pages are reached by answering with their numbers, never by
+    /// advertising more entries.
     /// </summary>
-    /// <remarks>
-    /// An earlier revision advertised <c>[26, 6, 7]</c> to reach the script's later
-    /// pages. Those two numbers are other people's functions -
-    /// <c>NPC_FLAG_GUILDQUEST</c> and <c>NPC_FLAG_ACTIVITY</c> - so the guide's
-    /// window offered "Guild Quest" and "Item Exchange" as if they were services of
-    /// his, and neither of them drew a Zeus page.
-    /// </remarks>
-    private static readonly int[] ZeusGiftFunctionList = [ZeusGiftFunctionNumber];
+    internal static readonly int[] ZeusGiftFunctionList = [ZeusGiftFunctionNumber];
+
+    /// <summary>The level both endpoints turn away, <c>NF_L0_Z100</c>.</summary>
+    internal const int ZeusGiftMinimumLevel = ZeusGiftPolicy.MinimumLevel;
 
     /// <summary>
-    /// The level the follower turns away (<c>NF_L0_Z100</c>).
-    /// </summary>
-    internal const int ZeusGiftMinimumLevel = 55;
-
-    /// <summary>
-    /// The value the client sends when it wants the current page's entries rather
-    /// than reporting a click.
+    /// What the client sends when it wants the open page's entries rather than
+    /// reporting a click: every click slot is <c>-1</c>.
     /// </summary>
     private const int ZeusGiftOpeningRequest = -1;
 
     /// <summary>
-    /// The reply that turns away a character below the level (page 1, result).
+    /// What the client sends when the player presses the window's confirm button
+    /// instead of one of the numbers. Captured 2026-10-04 01:02:40: the follower's
+    /// basket page was up, the player dropped the gift in and confirmed, and the
+    /// second click slot carried <c>0</c>.
     /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftLevelReply =
-    [
-        new(ZeusDialogueKind.Result, 100, "NF_L0_Z100")
-    ];
+    private const int ZeusGiftConfirmSelection = 0;
 
     /// <summary>
-    /// Page 1 of the follower's dialogue: his invitation and the three services he
-    /// offers.
+    /// The follower's window when the character is below the level, which the
+    /// capture answers with for <c>Athens_113</c>, <c>Athens_114</c> and
+    /// <c>Sparta_114</c>. It is the script's first-page <c>SubID == 100</c> branch.
+    /// </summary>
+    internal static readonly int[] ZeusGiftLevelReply = [100];
+
+    // ---- the follower: [Event]Zeus' Loyal Believer (Athens_113 / Sparta_113) ----
+    //
+    // The capture (2026-10-04, session 825354ec) is the whole of this half:
+    //   open   -> [<requirement>, 1001, 1002, 1003, <progress>]
+    //   1001   -> [1005]
+    //   1002   -> [1512, 1006, 1008]
+    //   1003   -> [1513, 1009, 1007]
+    //   1006   -> [1313, <tier>*10000+13]
+    //   1007   -> [1014]
+    // and the reference answered 1008 with nothing at all.
+
+    /// <summary>
+    /// Page 2 of the delivery: "快把天神需要的礼物献上来吧" plus the slot the gift
+    /// goes in (<c>NpcFunZeus.lua:262</c>).
+    /// </summary>
+    internal static readonly int[] ZeusGiftBasketPage = [1005];
+
+    /// <summary>
+    /// Page 2: the follower offers to take ten level-one crystals instead
+    /// (<c>NpcFunZeus.lua:287</c>).
+    /// </summary>
+    internal static readonly int[] ZeusGiftLazyAnswerPage = [1512, 1006, 1008];
+
+    /// <summary>
+    /// Page 2: the follower warns that swapping the requirement resets the reward
+    /// level (<c>NpcFunZeus.lua:290</c>).
+    /// </summary>
+    internal static readonly int[] ZeusGiftSwapQuestionPage = [1513, 1009, 1007];
+
+    /// <summary>
+    /// Page 3: the swap went through (<c>NpcFunZeus.lua:535</c>).
+    /// </summary>
+    internal static readonly int[] ZeusGiftSwapAcceptedPage = [1014];
+
+    /// <summary>
+    /// Page 3: "你又懒又没水晶给我…回家打酱油去吧！" and the window closes
+    /// (<c>NpcFunZeus.lua:531</c>). It answers the "太黑了,再见!" entry, which the
+    /// reference server left unanswered; the number is the script's own dismissal.
+    /// </summary>
+    internal static readonly int[] ZeusGiftRefusedPage = [1108];
+
+    /// <summary>
+    /// Page 3: "请选择" and the window closes (<c>NpcFunZeus.lua:523</c>). It
+    /// answers the "让我再考虑下吧" entry, which the reference also left unanswered.
+    /// </summary>
+    internal static readonly int[] ZeusGiftReconsideredPage = [1103];
+
+    /// <summary>
+    /// Page 3: the character does not hold what the follower asked for
+    /// (<c>NF_L0_Z1104</c>, <c>NpcFunZeus.lua:504</c>).
+    /// </summary>
+    internal static readonly int[] ZeusGiftMissingGiftPage = [1104];
+
+    /// <summary>
+    /// Page 3: the day's deliveries are spent — the script's "本神给你一次换的机
+    /// 会", which is also the only closing line the first page offers for a spent
+    /// quota on this half.
+    /// </summary>
+    internal static readonly int[] ZeusGiftNoDeliveriesPage = [1014];
+
+    // ---- the saint: [Event]Praying Saint (Athens_114 / Sparta_114) ----
+    //
+    // No capture covers this endpoint past the level gate, so every number below is
+    // transcribed from NpcFunZeus.lua with the page it sits on, and the page a
+    // reply lands on is the reply's own ordinal (see the page rule on
+    // NpcFunctionActionResponseAsync).
+
+    /// <summary>
+    /// Page 1: the saint's own description and the three services.
     /// </summary>
     /// <remarks>
-    /// The script puts all three entries on rows of their own - <c>1200</c> at
-    /// <c>25,135</c>, <c>1201</c> at <c>25,155</c> and <c>101</c> at <c>25,175</c> -
-    /// so one reply may carry them together. The rows they leave free belong to the
-    /// other Zeus endpoint: <c>1000</c>/<c>1001</c>/<c>1002</c>/<c>1003</c> are the
-    /// gift-delivery entries drawn on the same page, and <c>100</c> is the level
-    /// reply, which shares <c>1200</c>'s row because it never appears beside it.
+    /// The line is <c>1514</c>, not the believer's <c>1511</c>: captured
+    /// 2026-10-04 03:19:22 answered <c>[1514, 1200, 1201, 101]</c>, and
+    /// <c>NF_L0_Z1514</c> is the saint's own "亲爱的朋友，你要时刻牢记一点…在每周六
+    /// 12：00-周日23：55，宙斯都会让我派发无数的奇珍异宝" while <c>NF_L0_Z1511</c>
+    /// is the believer's invitation to give gifts.
     /// </remarks>
-    private static readonly ZeusDialogueEntry[] ZeusGiftOpeningMenu =
-    [
-        new(ZeusDialogueKind.Text, 1511, "NF_L0_Z1511"),
-        new(ZeusDialogueKind.Button, 1200, "NF_L0_Z1200"),
-        new(ZeusDialogueKind.Button, 1201, "NF_L0_Z1201"),
-        new(ZeusDialogueKind.Button, 101, "NF_L0_Z101")
-    ];
+    internal static readonly int[] ZeusGiftSaintOpeningPage = [1514, 1200, 1201, 101];
+
+    /// <summary>Page 2: the praying-stone input form (<c>:198</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintDepositFormPage = [1202];
 
     /// <summary>
-    /// Page 2: the deposit form, which the script draws as a text line plus the
-    /// stone input field (<c>NF_L0_Z1202</c>).
+    /// Page 2: the three exchange entries and their blurb, in the captured order
+    /// (<c>:209</c>, <c>:214</c>, <c>:219</c>, <c>:243</c>).
     /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftDepositForm =
-    [
-        new(ZeusDialogueKind.Text, 1202, "NF_L0_Z1202")
-    ];
+    internal static readonly int[] ZeusGiftSaintExchangePage = [1203, 1204, 1205, 1517];
 
     /// <summary>
-    /// Page 2: what the player may exchange for.
+    /// Page 2: the eight luck goods, preceded by the line that prints how many
+    /// chances the week's deposits have left.
     /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftExchangeMenu =
+    internal static readonly int[] ZeusGiftLuckGoodButtons =
     [
-        new(ZeusDialogueKind.Button, 1203, "NF_L0_Z1203"),
-        new(ZeusDialogueKind.Button, 1204, "NF_L0_Z1204"),
-        new(ZeusDialogueKind.Button, 1205, "NF_L0_Z1205")
+        200, 201, 202, 203, 204, 205, 206, 207
     ];
 
     /// <summary>
-    /// Page 2: the goods the luck of the exchange decides. The script lays the
-    /// eight entries out in two columns - <c>200</c>-<c>204</c> down
-    /// <c>25,155</c>-<c>25,235</c> and <c>205</c>-<c>207</c> down
-    /// <c>320,155</c>-<c>320,195</c> - so the whole list fits in one reply.
+    /// Page 2's chance line: <c>NF_Z_T2</c> reads its number back as
+    /// <c>(SubID - 6) / 10000 - 1</c>, and the captured reply for a character with
+    /// two chances left was <c>30006</c>.
     /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftLuckMenu =
-    [
-        new(ZeusDialogueKind.Text, 1517, "NF_L0_Z1517"),
-        new(ZeusDialogueKind.Button, 200, "NF_Z_B200"),
-        new(ZeusDialogueKind.Button, 201, "NF_Z_B201"),
-        new(ZeusDialogueKind.Button, 202, "NF_Z_B202"),
-        new(ZeusDialogueKind.Button, 203, "NF_Z_B203"),
-        new(ZeusDialogueKind.Button, 204, "NF_Z_B204"),
-        new(ZeusDialogueKind.Button, 205, "NF_Z_B205"),
-        new(ZeusDialogueKind.Button, 206, "NF_Z_B206"),
-        new(ZeusDialogueKind.Button, 207, "NF_Z_B207")
-    ];
+    internal static int[] ZeusGiftSaintLuckPage(int chances) =>
+        [ZeusGiftPolicy.LuckChancesSubId(chances), .. ZeusGiftLuckGoodButtons];
+
+    /// <summary>Page 2: the deposit only runs Monday to Friday (<c>NF_L0_Z1306</c>, <c>:224</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintWeekdayOnlyPage = [1306];
+
+    /// <summary>Page 2: the exchange only runs on the weekend (<c>NF_L0_Z1110</c>, <c>:194</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintWeekendOnlyPage = [1110];
 
     /// <summary>
-    /// Page 3: the deposit went through.
+    /// Page 2: "你明明没参加过宙斯献礼活动还想来兑换,做梦去吧!" (<c>:258</c>), the
+    /// saint's answer to a character that has never delivered.
     /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftDepositResult =
-    [
-        new(ZeusDialogueKind.Result, 1206, "NF_L0_Z1206")
-    ];
+    internal static readonly int[] ZeusGiftSaintNotInEventPage = [1102];
+
+    /// <summary>Page 3: the deposit went through (<c>:349</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintDepositDonePage = [1206];
 
     /// <summary>
-    /// Page 3: the ordinary goods, with the warning the script prints above them.
-    /// The five entries sit at <c>25,135</c>-<c>25,215</c>.
+    /// Page 3: the ordinary shelf, in the captured order
+    /// (<c>:353</c>–<c>:377</c>, <c>:494</c>).
     /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftOrdinaryMenu =
+    internal static readonly int[] ZeusGiftSaintOrdinaryShelfPage =
     [
-        new(ZeusDialogueKind.Text, 1518, "NF_L0_Z1518"),
-        new(ZeusDialogueKind.Button, 1207, "NF_L0_Z1207"),
-        new(ZeusDialogueKind.Button, 1208, "NF_L0_Z1208"),
-        new(ZeusDialogueKind.Button, 1209, "NF_L0_Z1209"),
-        new(ZeusDialogueKind.Button, 1210, "NF_L0_Z1210"),
-        new(ZeusDialogueKind.Button, 1211, "NF_L0_Z1211")
+        1207, 1208, 1209, 1210, 1211, 1518
     ];
 
     /// <summary>
-    /// Page 3: the limited goods, with the script's warning about them.
+    /// Page 3: the limited shelf, in the captured order
+    /// (<c>:459</c>–<c>:493</c>, <c>:497</c>).
     /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftLimitedMenu =
+    internal static readonly int[] ZeusGiftSaintLimitedShelfPage =
     [
-        new(ZeusDialogueKind.Text, 1516, "NF_L0_Z1516"),
-        new(ZeusDialogueKind.Button, 4000, "NF_L0_Z1230"),
-        new(ZeusDialogueKind.Button, 4001, "NF_L0_Z1234"),
-        new(ZeusDialogueKind.Button, 4002, "NF_L0_Z1235"),
-        new(ZeusDialogueKind.Button, 4003, "NF_L0_Z1232"),
-        new(ZeusDialogueKind.Button, 4004, "NF_L0_Z1233"),
-        new(ZeusDialogueKind.Button, 4005, "NF_L0_Z1236"),
-        new(ZeusDialogueKind.Button, 4006, "NF_L0_Z1231")
+        4000, 4001, 4002, 4003, 4004, 4005, 4006, 1516
     ];
 
+    /// <summary>Page 3: the free experience and talent claim went through (<c>:400</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintFreeClaimedPage = [1611];
+
     /// <summary>
-    /// Page 3: the experience and talent points were redeemed.
+    /// Page 4: the dust box. <c>3000</c> raises the slot and clears the text line,
+    /// so it has to travel before <c>3001</c>, whose instruction must stay up
+    /// (<c>:668</c>, <c>:673</c>).
     /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftRedeemResult =
-    [
-        new(ZeusDialogueKind.Result, 1611, "NF_L0_Z1113")
-    ];
+    internal static readonly int[] ZeusGiftSaintDustBoxPage = [3000, 3001];
+
+    /// <summary>Page 4: the limited shelf ran out for the week (<c>5102</c>, <c>:588</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintOutOfStockPage = [5102];
+
+    /// <summary>Page 5: the prize was handed over (<c>3007</c>, <c>NF_L0_Z1222</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintPrizeClaimedPage = [3007];
+
+    /// <summary>Page 5: the exchange failed (<c>3004</c>, <c>NF_L0_Z1303</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintExchangeLostPage = [3004];
+
+    /// <summary>Page 5: not enough material (<c>3003</c>, <c>NF_L0_Z1504</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintExchangeNoDustPage = [3003];
+
+    /// <summary>Page 5: the week's exchanges are spent (<c>3006</c>, <c>NF_L0_Z1328</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintExchangeSpentPage = [3006];
+
+    /// <summary>Page 5: the server could not run the exchange (<c>3005</c>, <c>NF_L0_Z1305</c>).</summary>
+    internal static readonly int[] ZeusGiftSaintExchangeFailedPage = [3005];
+
+    /// <summary>Page 5: the bag had no room for the prize.</summary>
+    internal static readonly int[] ZeusGiftSaintBagFullPage = [3005];
+
+    // ---- the luck contest ----
+
+    /// <summary>Page 3: the contest runs Saturday noon to Sunday noon (<c>NF_Z_T300</c>, <c>:300</c>).</summary>
+    internal static readonly int[] ZeusGiftLuckClosedPage = [300];
+
+    /// <summary>Page 4: the week's chances are spent (<c>NF_Z_T407</c>, <c>:304</c>).</summary>
+    internal static readonly int[] ZeusGiftLuckNoChancesPage = [407];
+
+    /// <summary>Page 4: the box does not hold ten dusts (<c>NF_Z_T401</c>, <c>:401</c>).</summary>
+    internal static readonly int[] ZeusGiftLuckNoDustPage = [401];
+
+    /// <summary>Page 4: the box holds something that is not dust (<c>NF_Z_T400</c>, <c>:400</c>).</summary>
+    internal static readonly int[] ZeusGiftLuckNotDustPage = [400];
+
+    /// <summary>Page 4: a lucky number paid 99 dusts back (<c>NF_Z_T402</c>, <c>:402</c>).</summary>
+    internal static readonly int[] ZeusGiftLuckLuckyNumberPage = [402];
+
+    /// <summary>Page 4: the 176 roll handed the item over (<c>NF_Z_T403</c>, <c>:403</c>).</summary>
+    internal static readonly int[] ZeusGiftLuckSuperLuckyPage = [403];
+
+    /// <summary>Page 4: the claim went through (<c>NF_Z_T406</c>, <c>:404</c>).</summary>
+    internal static readonly int[] ZeusGiftLuckClaimedPage = [406];
+
+    /// <summary>Page 4: the prize was already taken (<c>NF_Z_T405</c>).</summary>
+    internal static readonly int[] ZeusGiftLuckAlreadyClaimedPage = [405];
 
     /// <summary>
-    /// Page 3: the dust bracket, which is what the luck of an exchange is settled
-    /// with. <c>3000</c> shows the bracket itself and clears the text line, so it
-    /// goes before <c>3001</c>, whose instruction is the line that must stay up.
-    /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftDustBracket =
-    [
-        new(ZeusDialogueKind.Text, 3000, "NF_L0_Z1212"),
-        new(ZeusDialogueKind.Text, 3001, "NF_L0_Z1213")
-    ];
-
-    /// <summary>
-    /// Page 3: the same bracket with the claim the script puts beside it
-    /// (<c>NF_Z_B302</c>, "I've won the prize!").
-    /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftLuckBracket =
-    [
-        new(ZeusDialogueKind.Text, 3000, "NF_L0_Z1212"),
-        new(ZeusDialogueKind.Text, 3001, "NF_L0_Z1213"),
-        new(ZeusDialogueKind.Button, 302, "NF_Z_B302")
-    ];
-
-    /// <summary>
-    /// Page 4: the limited goods have run out by the time the exchange is settled.
-    /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftOutOfStock =
-    [
-        new(ZeusDialogueKind.Result, 5102, "NF_L0_Z1329")
-    ];
-
-    /// <summary>
-    /// Page 4: the prizes the claim is settled against.
-    /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftPrizeMenu =
-    [
-        new(ZeusDialogueKind.Button, 1230, "NF_L0_Z1230"),
-        new(ZeusDialogueKind.Button, 1231, "NF_L0_Z1231"),
-        new(ZeusDialogueKind.Button, 1232, "NF_L0_Z1232"),
-        new(ZeusDialogueKind.Button, 1233, "NF_L0_Z1233"),
-        new(ZeusDialogueKind.Button, 1234, "NF_L0_Z1234"),
-        new(ZeusDialogueKind.Button, 1235, "NF_L0_Z1235"),
-        new(ZeusDialogueKind.Button, 1236, "NF_L0_Z1236")
-    ];
-
-    /// <summary>
-    /// Page 5: the prize was handed over.
-    /// </summary>
-    private static readonly ZeusDialogueEntry[] ZeusGiftPrizeClaimed =
-    [
-        new(ZeusDialogueKind.Result, 3007, "NF_L0_Z1222")
-    ];
-
-    /// <summary>
-    /// What each number the client can send is answered with.
+    /// Page 4: the claim was refused because the score only tied the highest.
     /// </summary>
     /// <remarks>
-    /// A reply cannot name a page: the function number comes back untouched, and a
-    /// number only draws on the page whose branch it sits in. How the client picks
-    /// that page is settled by the instance caller, which this server already
-    /// answers at two levels - it sends dialog index <c>9</c> with both
-    /// <c>[11,14,15]</c> and <c>[206,204,205,207]</c> and the client draws page one
-    /// for the first and page two for the second. The page therefore follows the
-    /// sequence of replies inside one dialogue, and every value below holds the
-    /// numbers of the step its key leads to.
-    ///
-    /// The ordinary goods are answered with the dust bracket because that is the
-    /// script's own order - the bracket is page 4, the shelf that sells them is
-    /// page 3 - and the same holds for the follow-ups of the limited and lucky
-    /// shelves. Nothing here reports a reward: the follower's economy is not
-    /// implemented, so every branch stops at the line the client draws.
+    /// <c>NF_Z_T408</c>, "很遗憾，尽管您投出的分数与最高分相同，但只有最先投出最高分
+    /// 的玩家才可以得到奖励哦". The script gives 408 a branch of its own ahead of the
+    /// 404-409 run (<c>:592</c>), and the reference answers it for an untouched board:
+    /// a zero ties the zero it finds and was not the first either.
     /// </remarks>
-    private static readonly Dictionary<int, ZeusDialogueEntry[]> ZeusGiftSteps = new()
-    {
-        [1200] = ZeusGiftDepositForm,
-        [1201] = ZeusGiftExchangeMenu,
-        [101] = ZeusGiftLuckMenu,
+    internal static readonly int[] ZeusGiftLuckTiedPage = [408];
 
-        [1202] = ZeusGiftDepositResult,
-        [1203] = ZeusGiftOrdinaryMenu,
-        [1204] = ZeusGiftLimitedMenu,
-        [1205] = ZeusGiftRedeemResult,
+    /// <summary>Page 4: the claim came from someone who is not the week's winner (<c>NF_Z_T409</c>).</summary>
+    internal static readonly int[] ZeusGiftLuckNotWinnerPage = [409];
 
-        [200] = ZeusGiftLuckBracket,
-        [201] = ZeusGiftLuckBracket,
-        [202] = ZeusGiftLuckBracket,
-        [203] = ZeusGiftLuckBracket,
-        [204] = ZeusGiftLuckBracket,
-        [205] = ZeusGiftLuckBracket,
-        [206] = ZeusGiftLuckBracket,
-        [207] = ZeusGiftLuckBracket,
+    /// <summary>Page 4: the bag had no room for the claimed item.</summary>
+    internal static readonly int[] ZeusGiftLuckBagFullPage = [409];
 
-        [1207] = ZeusGiftDustBracket,
-        [1208] = ZeusGiftDustBracket,
-        [1209] = ZeusGiftDustBracket,
-        [1210] = ZeusGiftDustBracket,
-        [1211] = ZeusGiftDustBracket,
-
-        [4000] = ZeusGiftOutOfStock,
-        [4001] = ZeusGiftOutOfStock,
-        [4002] = ZeusGiftOutOfStock,
-        [4003] = ZeusGiftOutOfStock,
-        [4004] = ZeusGiftOutOfStock,
-        [4005] = ZeusGiftOutOfStock,
-        [4006] = ZeusGiftOutOfStock,
-
-        [302] = ZeusGiftPrizeMenu,
-
-        [1230] = ZeusGiftPrizeClaimed,
-        [1231] = ZeusGiftPrizeClaimed,
-        [1232] = ZeusGiftPrizeClaimed,
-        [1233] = ZeusGiftPrizeClaimed,
-        [1234] = ZeusGiftPrizeClaimed,
-        [1235] = ZeusGiftPrizeClaimed,
-        [1236] = ZeusGiftPrizeClaimed
-    };
+    /// <summary>The claim button's number, drawn on the contest's third page (<c>:324</c>).</summary>
+    internal const int ZeusGiftLuckClaimButton = 302;
 }

@@ -68,19 +68,13 @@ internal sealed partial class GameClientHandler
         // shared dialog indices without answering them.
         if (IsWishingPool(npcId))
         {
-            var payload = packet.Payload;
-            var selection = payload.Length >= 20
-                ? BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(16, 4))
-                : subId;
-            if (selection < 0)
-            {
-                selection = subId;
-            }
-
+            // The newest click, not the first slot: the client appends one slot per
+            // entry it has already sent, so a second click sits in slot one (see
+            // ResolveNpcFunctionSelection).
             await HandleWishingPoolActionAsync(
                 npcId,
                 dialogIndex,
-                selection,
+                ResolveNpcFunctionSelection(subId, args),
                 cancellationToken);
             return;
         }
@@ -258,19 +252,11 @@ internal sealed partial class GameClientHandler
         // leaves the versioned dialogue baseline untouched.
         if (IsZeusGiftEndpoint(npc))
         {
-            var payload = packet.Payload;
-            var selection = payload.Length >= 20
-                ? BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(16, 4))
-                : subId;
-            if (selection < 0)
-            {
-                selection = subId;
-            }
-
             await HandleZeusGiftDialogueAsync(
                 npc,
                 dialogIndex,
-                selection,
+                ResolveNpcFunctionSelection(subId, args),
+                args,
                 cancellationToken);
             return;
         }

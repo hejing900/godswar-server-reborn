@@ -363,6 +363,13 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateHarborAttackDailyEntry(),
         CreateAtlantisPartialRewards(),
         CreateAtlantisCompletionRosterConstraint(),
-        CreateGuildRefuseApplications()
+        CreateGuildRefuseApplications(),
+        CreateZeusGiftDailyState(),
+        CreateZeusGiftWeeklyState(),
+        CreateZeusGiftRealmStoneTotal(),
+        CreateZeusLuckEntries(),
+        CreateZeusGiftLimitedStock(),
+        CreateZeusGiftBankedReward(),
+        CreateZeusGiftLimitedStockPerCamp()
     ];
 }

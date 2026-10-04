@@ -128,6 +128,8 @@ internal sealed partial class GameClientHandler
             .ILuckyGodsWishStore? luckyGodsWish = null,
         Godswar.Server.Infrastructure.Guilds
             .PostgresGuildStore? guilds = null,
+        Godswar.Server.Infrastructure.ZeusGift
+            .PostgresZeusGiftStore? zeusGift = null,
         TimeProvider? flameBlastTimeProvider = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
@@ -249,6 +251,7 @@ internal sealed partial class GameClientHandler
         _questAppraisal = questAppraisal;
         _luckyGodsWish = luckyGodsWish;
         _guilds = guilds;
+        _zeusGift = zeusGift;
         _petOwnerMergeEnergyInterval =
             petOwnerMergeEnergyInterval ?? TimeSpan.FromSeconds(3);
         _petOwnerMergeRechargeInterval =

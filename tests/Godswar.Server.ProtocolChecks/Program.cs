@@ -196,6 +196,9 @@ internal static partial class Program
             (
                 LuckyGodsWishPolicyChecks.CheckName,
                 LuckyGodsWishPolicyChecks.RunAsync),
+            (
+                ZeusGiftProtocolChecks.CheckName,
+                ZeusGiftProtocolChecks.RunAsync),
             ("Monster movement-cell visibility and spawn layout", CheckMonsterMovementCellVisibilityAsync),
             ("World boss outdoor-area catalog", WorldBossCatalogChecks.RunAsync),
             (MonsterLootChannelChecks.CheckName, MonsterLootChannelChecks.RunAsync),

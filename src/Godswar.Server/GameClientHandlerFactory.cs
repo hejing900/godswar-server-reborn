@@ -169,6 +169,8 @@ internal sealed class GameClientHandlerFactory(
             luckyGodsWish:
                 postgresRuntime?.LuckyGodsWish,
             guilds:
-                postgresRuntime?.Guilds);
+                postgresRuntime?.Guilds,
+            zeusGift:
+                postgresRuntime?.ZeusGift);
     }
 }
