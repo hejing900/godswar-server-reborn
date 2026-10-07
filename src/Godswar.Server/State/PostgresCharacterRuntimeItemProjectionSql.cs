@@ -15,11 +15,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
             SELECT
                 equipment.user_id,
                 stat.stat_name,
-                COALESCE(NULLIF(stat_values.values[
-                    LEAST(
-                        GREATEST(equipment.item_quality::integer, 1),
-                        array_length(stat_values.values, 1))
-                ], '')::numeric, 0::numeric) * stat.scale AS stat_value
+                {{PostgresCharacterHolySuitProjectionSql.AdjustedBaseValue}} * stat.scale AS stat_value
             FROM character_items equipment
             JOIN character_base owner
               ON owner.id = equipment.user_id
@@ -68,6 +64,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                     template.stats->>stat.source_key, ',') AS values
                 WHERE template.stats ? stat.source_key
             ) stat_values ON true
+            {{PostgresCharacterHolySuitProjectionSql.BaseValueLateralJoin}}
             WHERE equipment.item_location = 0
               AND equipment.user_id = @characterId
               AND owner.fighter_job_lv >=
@@ -207,15 +204,27 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
               ON stat.effect_key = effect.key
             WHERE talent.rank > 0
         ),
+        -- Holy Suit SET bonus: character-wide, staged by unlock_points, grown by
+        -- per_point for every accumulated point and clamped by maximum. This is
+        -- separate from the per-equipment percentage bonus, which scales an
+        -- item's own base stat by holy_suit_progression_points() percent.
         holy_suit_stat_values AS (
             SELECT
                 character.id AS user_id,
                 stat.stat_name,
-                effect.effect_value AS stat_value
+                LEAST(
+                    TRUNC(
+                        COALESCE(set_balance.per_point, effect.effect_value / 440)
+                        * character.holy_suit_points),
+                    COALESCE(
+                        set_balance.maximum::numeric,
+                        effect.effect_value * 3 / 4)) AS stat_value
             FROM character_base character
             JOIN holy_suit_effect_content_definitions effect
               ON effect.revision = @itemContentRevision
              AND character.holy_suit_points >= effect.unlock_points
+            LEFT JOIN holy_suit_effect_templates set_balance
+              ON set_balance.effect_key = effect.effect_key
             JOIN (
                 VALUES
                     ('MaxHPD', 'max_hp'), ('MaxMPD', 'max_mp'),

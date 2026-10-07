@@ -3,6 +3,7 @@
 // captured while a kill quest was accepted and worked on.
 
 using System.Buffers.Binary;
+using Godswar.Server.Domain.World.Content;
 using Godswar.Server.Protocol;
 
 namespace Godswar.Server.Packets;
@@ -47,6 +48,17 @@ internal static partial class PacketBuilder
     /// <remarks>
     /// Payload +0 npc, +4 quest, +24 target monster id and +40 how
     /// many are wanted.
+    /// <para>
+    /// The target area is the same parallel u16 arrays as the accept answer and
+    /// the follow-up detail, four bytes earlier again: slot <c>i</c> holds one
+    /// monster at <c>+28 + 2i</c> and one count at <c>+44 + 2i</c>, and the item
+    /// half of the quest's objectives sits beside them at <c>+20</c>/<c>+36</c>.
+    /// The reference server's own detail for the two-target quest 1541 carries
+    /// 1421 and 1422 in those two slots, so every target the quest names is
+    /// written - writing the target as a single <c>u32</c>, which is what this
+    /// builder used to do, is what left a multi-target quest's window with one
+    /// objective.
+    /// </para>
     /// </remarks>
     public static byte[] QuestObjectiveDetail(
         uint npcId,
@@ -59,10 +71,38 @@ internal static partial class PacketBuilder
             packet.AsSpan(4, 4), npcId);
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(8, 4), questId);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            packet.AsSpan(28, 4), monsterId);
+        // The content table is the same source the accept answer uses, so the
+        // detail cannot disagree with it. A quest it does not carry keeps the
+        // caller's own single target.
+        var content = Godswar.Server.Game.GameClientHandler.DisplayQuestObjectives(questId);
+        IReadOnlyList<QuestObjective> objectives = content.Count > 0
+            ? content
+            :
+            [
+                new QuestObjective(
+                    string.Empty,
+                    string.Empty,
+                    required,
+                    monsterId,
+                    0u,
+                    0f,
+                    0f)
+            ];
+        WriteObjectiveSlots(
+            packet,
+            QuestNextDetailMonsterOffset,
+            QuestNextDetailRequiredOffset,
+            objectives);
+        WriteCollectObjective(
+            packet,
+            QuestNextDetailItemIdOffset,
+            QuestNextDetailItemCountOffset,
+            questId);
+        var hasObjectives = content.Count > 0 ||
+            StarterQuestCollectObjectives.TryGet(questId, out _);
         BinaryPrimitives.WriteInt32LittleEndian(
-            packet.AsSpan(44, 4), required);
+            packet.AsSpan(QuestNextDetailKindOffset, 4),
+            hasObjectives ? QuestWithObjectivesKind : 4);
         return packet;
     }
 

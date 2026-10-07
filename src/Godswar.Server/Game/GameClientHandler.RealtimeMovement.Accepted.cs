@@ -86,6 +86,7 @@ internal sealed partial class GameClientHandler
         await RefreshNearbyWorldObjectsAsync(
             "realtime-walk",
             cancellationToken);
+        await RecordQuestExplorationAsync(cancellationToken);
         if (!RevalidateCurrentWorldEffectOwnership(
                 "realtime_effect_creation"))
         {

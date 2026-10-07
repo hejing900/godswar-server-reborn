@@ -161,18 +161,22 @@ talent_stats AS (
     WHERE ct.rank > 0
     GROUP BY ct.user_id
 ),
+-- Holy Suit SET bonus: character-wide, staged by unlock_points, grown by
+-- per_point for every accumulated point and clamped by maximum. Separate from
+-- the per-equipment percentage bonus, which scales an item's own base stat by
+-- holy_suit_progression_points() percent.
 holy_suit_stats AS (
     SELECT
         cb.id AS user_id,
-        SUM(h.effect_value) FILTER (WHERE h.effect_key = 'MaxHPD') AS max_hp,
-        SUM(h.effect_value) FILTER (WHERE h.effect_key = 'MaxMPD') AS max_mp,
-        SUM(h.effect_value) FILTER (WHERE h.effect_key = 'Attack') AS physical_attack,
-        SUM(h.effect_value) FILTER (WHERE h.effect_key = 'Defence') AS physical_defense,
-        SUM(h.effect_value) FILTER (WHERE h.effect_key = 'MagicAk') AS magic_attack,
-        SUM(h.effect_value) FILTER (WHERE h.effect_key = 'MagicRec') AS magic_defense,
-        SUM(h.effect_value) FILTER (WHERE h.effect_key = 'Hit') AS hit,
-        SUM(h.effect_value) FILTER (WHERE h.effect_key = 'Miss') AS dodge,
-        SUM(h.effect_value) FILTER (WHERE h.effect_key = 'InjureImbibe') AS damage_absorb
+        SUM(LEAST(TRUNC(COALESCE(h.per_point, h.effect_value / 440) * cb.holy_suit_points), COALESCE(h.maximum::numeric, h.effect_value * 3 / 4))) FILTER (WHERE h.effect_key = 'MaxHPD') AS max_hp,
+        SUM(LEAST(TRUNC(COALESCE(h.per_point, h.effect_value / 440) * cb.holy_suit_points), COALESCE(h.maximum::numeric, h.effect_value * 3 / 4))) FILTER (WHERE h.effect_key = 'MaxMPD') AS max_mp,
+        SUM(LEAST(TRUNC(COALESCE(h.per_point, h.effect_value / 440) * cb.holy_suit_points), COALESCE(h.maximum::numeric, h.effect_value * 3 / 4))) FILTER (WHERE h.effect_key = 'Attack') AS physical_attack,
+        SUM(LEAST(TRUNC(COALESCE(h.per_point, h.effect_value / 440) * cb.holy_suit_points), COALESCE(h.maximum::numeric, h.effect_value * 3 / 4))) FILTER (WHERE h.effect_key = 'Defence') AS physical_defense,
+        SUM(LEAST(TRUNC(COALESCE(h.per_point, h.effect_value / 440) * cb.holy_suit_points), COALESCE(h.maximum::numeric, h.effect_value * 3 / 4))) FILTER (WHERE h.effect_key = 'MagicAk') AS magic_attack,
+        SUM(LEAST(TRUNC(COALESCE(h.per_point, h.effect_value / 440) * cb.holy_suit_points), COALESCE(h.maximum::numeric, h.effect_value * 3 / 4))) FILTER (WHERE h.effect_key = 'MagicRec') AS magic_defense,
+        SUM(LEAST(TRUNC(COALESCE(h.per_point, h.effect_value / 440) * cb.holy_suit_points), COALESCE(h.maximum::numeric, h.effect_value * 3 / 4))) FILTER (WHERE h.effect_key = 'Hit') AS hit,
+        SUM(LEAST(TRUNC(COALESCE(h.per_point, h.effect_value / 440) * cb.holy_suit_points), COALESCE(h.maximum::numeric, h.effect_value * 3 / 4))) FILTER (WHERE h.effect_key = 'Miss') AS dodge,
+        SUM(LEAST(TRUNC(COALESCE(h.per_point, h.effect_value / 440) * cb.holy_suit_points), COALESCE(h.maximum::numeric, h.effect_value * 3 / 4))) FILTER (WHERE h.effect_key = 'InjureImbibe') AS damage_absorb
     FROM character_base cb
     JOIN holy_suit_effect_templates h ON cb.holy_suit_points >= h.unlock_points
     GROUP BY cb.id

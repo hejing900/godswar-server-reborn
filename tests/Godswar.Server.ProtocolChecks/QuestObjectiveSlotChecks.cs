@@ -156,6 +156,50 @@ internal static class QuestObjectiveSlotChecks
             BinaryPrimitives.ReadInt32LittleEndian(
                 single.AsSpan(descriptor + 80)),
             "single-target descriptor still writes its progress");
+
+        // ---- the state word says whether the objective has been met -----
+        // The reference server's own 10090 for quest 1540 changed just this word
+        // and the count done when the thirtieth kill landed: 4 while 12 of 30,
+        // 3 once 30 of 30. Its snapshots for the unfinished kill quests carry 4
+        // (520 at 0 of 10, 1523 at 0 of 12, 1531 at 0 of 20). Leaving the frame
+        // template's 3 here is what made a quest read as finished on the client
+        // while the server's own objective check still refused the hand-in.
+        Check.Equal(
+            4,
+            BinaryPrimitives.ReadInt32LittleEndian(
+                snapshot.AsSpan(descriptor + 72)),
+            "unfinished multi-target snapshot keeps the objective open");
+        Check.Equal(
+            4,
+            BinaryPrimitives.ReadInt32LittleEndian(
+                single.AsSpan(descriptor + 72)),
+            "unfinished single-target snapshot keeps the objective open");
+        var met = PacketBuilder.QuestSnapshot(
+        [
+            new PacketBuilder.QuestSnapshotEntry(520u, 5054u, 5054u, 1027u, 10, 10)
+        ]);
+        Check.Equal(
+            3,
+            BinaryPrimitives.ReadInt32LittleEndian(
+                met.AsSpan(descriptor + 72)),
+            "met single-target snapshot marks the objective satisfied");
+        var halfMet = PacketBuilder.QuestSnapshot(
+        [
+            new PacketBuilder.QuestSnapshotEntry(
+                1533u,
+                5286u,
+                5286u,
+                Objectives:
+                [
+                    new PacketBuilder.QuestSnapshotObjective(1414u, 20, 20),
+                    new PacketBuilder.QuestSnapshotObjective(1415u, 20, 5)
+                ])
+        ]);
+        Check.Equal(
+            4,
+            BinaryPrimitives.ReadInt32LittleEndian(
+                halfMet.AsSpan(descriptor + 72)),
+            "a partly finished multi-target snapshot is still open");
         return Task.CompletedTask;
     }
 

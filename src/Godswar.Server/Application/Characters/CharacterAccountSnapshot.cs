@@ -63,7 +63,7 @@ internal sealed record CharacterIdentitySnapshot(
 }
 
 /// <summary>One accepted quest as the login snapshot carries it.</summary>
-internal readonly record struct LoadedQuestSnapshot(uint QuestId, int Progress);
+internal readonly record struct LoadedQuestSnapshot(uint QuestId, long Progress);
 
 internal sealed record CharacterAppearanceSnapshot(
     byte Gender,

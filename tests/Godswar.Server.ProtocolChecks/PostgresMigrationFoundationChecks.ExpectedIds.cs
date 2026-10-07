@@ -190,6 +190,11 @@ internal static partial class PostgresMigrationFoundationChecks
         "20261003_223_zeus_luck_entries",
         "20261003_224_zeus_gift_limited_stock",
         "20261003_225_zeus_gift_banked_reward",
-        "20261003_226_zeus_gift_limited_stock_camp"
+        "20261003_226_zeus_gift_limited_stock_camp",
+        "20261004_227_gm_waypoints",
+        "20261004_228_gm_monster_overrides",
+        "20261004_229_gm_npc_content",
+        "20261005_230_character_quest_daily",
+        "20261007_231_quest_reward_completion_claims"
     ];
 }

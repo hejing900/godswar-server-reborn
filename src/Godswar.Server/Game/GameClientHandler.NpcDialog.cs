@@ -261,12 +261,42 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        // The Cursed Land transports are handled before the scripted-dialogue
+        // registry: the in-map actors own no dialogue table at all, and the
+        // capital Event Transporter's 诅咒之地二 entry is a move rather than a
+        // page, so its other entries stay with EventTransporterDialogue below.
+        if (CursedLandTransportProtocol.IsInMapTransporter(npc.NpcKey))
+        {
+            await HandleCursedLandInMapActionAsync(
+                npc,
+                dialogIndex,
+                subId,
+                cancellationToken);
+            return;
+        }
+
+        if (IsCursedLandTwoClick(npc, dialogIndex, subId))
+        {
+            await HandleCursedLandTwoTeleportAsync(npc, cancellationToken);
+            return;
+        }
+
         // The scripted NPCs own their whole window in client scripts and carry no
         // dialogue route, so they are answered here as well. The registry lives in
         // ScriptedNpcDialogueCatalog.Routing.cs, which is also what the open packet
         // consults.
-        if (ResolveScriptedNpcDialogues(npc) is { } scriptedDialogue)
+        // Operator-authored GM NPCs answer their own clicks, before the published
+        // scripted dialogues: their key is not in the published content at all.
+        if (await TryHandleGmNpcFunctionActionAsync(
+                npc,
+                dialogIndex,
+                subId,
+                cancellationToken))
         {
+            return;
+        }
+
+        if (ResolveScriptedNpcDialogues(npc) is { } scriptedDialogue)        {
             await HandleScriptedNpcDialogueAsync(
                 npc,
                 scriptedDialogue,

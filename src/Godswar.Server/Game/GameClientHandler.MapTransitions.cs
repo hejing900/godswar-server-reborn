@@ -64,12 +64,38 @@ internal sealed partial class GameClientHandler
         return outcome != SceneTransitionOutcome.RejectedWithoutRelocation;
     }
 
-    private async Task<SceneTransitionOutcome> TryBeginMapTransitionAsync(
+    /// <summary>
+    /// The reviewed five-argument entry point, used by every existing caller.
+    /// </summary>
+    /// <remarks>
+    /// It stays a method of its own - rather than an optional parameter on the
+    /// implementation - because the map-transition acceptance checks resolve this
+    /// exact signature reflectively. Only the Cursed Land transports need the
+    /// extra fight-state frame the reference sends before a landing, so that
+    /// variant lives in <see cref="TryBeginMapTransitionCoreAsync"/> and every
+    /// other caller keeps this spelling.
+    /// </remarks>
+    private Task<SceneTransitionOutcome> TryBeginMapTransitionAsync(
         byte targetMapId,
         float targetX,
         float targetZ,
         string source,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        TryBeginMapTransitionCoreAsync(
+            targetMapId,
+            targetX,
+            targetZ,
+            source,
+            cancellationToken,
+            publishFightStateReset: false);
+
+    private async Task<SceneTransitionOutcome> TryBeginMapTransitionCoreAsync(
+        byte targetMapId,
+        float targetX,
+        float targetZ,
+        string source,
+        CancellationToken cancellationToken,
+        bool publishFightStateReset)
     {
         if (_pendingMapTransition is not null ||
             _account is null ||
@@ -238,6 +264,20 @@ internal sealed partial class GameClientHandler
             if (!RevalidateCurrentPlayerOwnership(ownership))
             {
                 return SceneTransitionOutcome.CommittedRequiresReconnect;
+            }
+
+            if (publishFightStateReset)
+            {
+                // Every captured relocation - the Cursed Land transports and the
+                // free revive alike - clears the local player's fight flag
+                // immediately before the landing frame. Sent once the transfer is
+                // authoritative and just before the scene change.
+                await _session.SendAsync(
+                    PacketBuilder.ObjectFightState(
+                        LocalPlayerObjectId,
+                        engaged: false),
+                    cancellationToken,
+                    "MapTransitionFightStateReset");
             }
 
             await _session.SendAsync(

@@ -38,6 +38,8 @@ internal sealed partial class GameSessionRegistry
                 cancellationToken);
             if (commit.Killed)
             {
+                if (commit.Source?.RecordQuestPlayerKill is { } record)
+                    await record(commit.Target, cancellationToken);
                 await TryClearPvpDeathStatusAsync(
                     commit.Target,
                     commit.DeathLifeRevision,

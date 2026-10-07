@@ -203,10 +203,20 @@ internal static partial class BackhaulSkillHandlerChecks
 
     private static void CheckReviveLandingCatalog()
     {
+        // Three capture-proven rows. Athens (2026-09-15) and Megara (2026-09-25)
+        // were the first two; the Cursed Land's map 29 was added by the
+        // 2026-10-04 capture, whose character died there six times and was
+        // answered with the same 28-byte landing frame every time.
         Check.Equal(
-            2,
+            3,
             ReviveLandingCatalog.Captured.Count,
-            "revive landing catalog carries both capture-proven rows");
+            "revive landing catalog carries every capture-proven row");
+        Check.True(
+            ReviveLandingCatalog.TryResolve(
+                (byte)CursedLandTransportProtocol.MapId,
+                out var cursed) &&
+            cursed is { MapId: 29, X: -196f, Z: 44f },
+            "revive landing catalog resolves the captured Cursed Land point");
         Check.True(
             ReviveLandingCatalog.TryResolve(
                 GameDefaults.AthensCapitalMap,

@@ -33,6 +33,10 @@ internal static partial class Program
         (string Name, Func<Task> Run)[] checks =
         [
             (ProtocolCheckRunnerChecks.CheckName, ProtocolCheckRunnerChecks.RunAsync),
+            (MonsterOverrideChecks.CheckName, MonsterOverrideChecks.RunAsync),
+            (GmNpcDialogueChecks.CheckName, GmNpcDialogueChecks.RunAsync),
+            (CursedLandContentChecks.CheckName, CursedLandContentChecks.RunAsync),
+            (QuestActorContentChecks.CheckName, QuestActorContentChecks.RunAsync),
             .. CoreRuntimeCheckCatalog.All,
             .. WorldTravelCheckCatalog.All,
             .. LegacyInstanceCheckCatalog.All,

@@ -165,6 +165,63 @@ internal sealed partial class JsonGameStore :
         }
     }
 
+    public async Task<IReadOnlyDictionary<uint, GameCharacter.QuestDailyCount>>
+        LoadQuestDailyCompletionsAsync(
+            int characterId,
+            CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(c => c.Id == characterId);
+            return character is null
+                ? new Dictionary<uint, GameCharacter.QuestDailyCount>()
+                : new Dictionary<uint, GameCharacter.QuestDailyCount>(
+                    character.QuestDailyCompletions);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task SaveQuestDailyCompletionsAsync(
+        int accountId,
+        int characterId,
+        IReadOnlyDictionary<uint, GameCharacter.QuestDailyCount> counts,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(counts);
+        if (counts.Count == 0)
+        {
+            return;
+        }
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(
+                c => c.AccountId == accountId && c.Id == characterId);
+            if (character is null)
+            {
+                return;
+            }
+
+            foreach (var (questId, count) in counts)
+            {
+                character.QuestDailyCompletions[questId] = count;
+            }
+
+            await SaveUnsafeAsync(db, cancellationToken);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task<CharacterWalletResult?> GrantQuestCurrencyAsync(
         int accountId,
         int characterId,

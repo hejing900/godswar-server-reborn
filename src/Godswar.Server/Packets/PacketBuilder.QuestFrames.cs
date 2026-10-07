@@ -11,6 +11,32 @@ internal static partial class PacketBuilder
     private const int RewardSlotItemIdOffset = 8;
 
     /// <summary>
+    /// Where a 72-byte reward slot carries its five attribute ids.
+    /// </summary>
+    /// <remarks>
+    /// Ids out of <c>item_attribute_templates</c>, four bytes apart; the empty
+    /// slot marker is <c>FFFFFFFF</c>. The id carries its own tier, so there is
+    /// no separate level word.
+    /// </remarks>
+    private const int RewardSlotAttributeOffset = 12;
+
+    /// <summary>Five attribute id words fit before the quality bytes.</summary>
+    private const int RewardSlotAttributeSlots = 5;
+
+    /// <summary>
+    /// Where a 72-byte reward slot carries its quality and grade words.
+    /// </summary>
+    /// <remarks>
+    /// Read out of the captured answer areas: quest 520's reward (the one the
+    /// client draws with an "精致的" prefix) carries <c>03 01</c> here while
+    /// 518/519/1518 carry <c>01 01</c>, which matches
+    /// <see cref="ItemGrantAttributes"/>'s quality-1/grade-1 default. The client
+    /// builds the quality prefix itself - the client name table only holds the
+    /// bare name ("轻皮护胸") - so this word is what the reward window shows.
+    /// </remarks>
+    private const int RewardSlotQualityOffset = 32;
+
+    /// <summary>
     /// The shape of a free reward slot, taken from the captured answer that
     /// carried no reward at all.
     /// </summary>
@@ -64,16 +90,66 @@ internal static partial class PacketBuilder
     private const int ObjectiveAnswerKindOffset = 20;
 
     /// <summary>
+    /// Where the objective area carries a quest's <em>item</em> objective: the
+    /// item's own id and how many of it are wanted.
+    /// </summary>
+    /// <remarks>
+    /// A quest's objectives are not all kills. The client's own text says "Kill 15
+    /// Little Snakes and collect 5 Snake Tails", and the item half of that is a
+    /// separate pair of fields from the parallel monster/count arrays - which is
+    /// why the client draws it on a list of its own (<c>ItemList</c> in
+    /// QuestViewUI.xml, next to <c>CreatureList</c>).
+    /// <para>
+    /// The reference server fills this pair for every quest that names an item and
+    /// leaves it zero otherwise, all three offsets verified against its own frames:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>10082 <c>+24</c> id / <c>+40</c> count - quest 526 carries 400 (Snake
+    /// Tail, the id <c>Text/QuestItem.dat</c> gives that name) and 5; 1526 carries
+    /// 300 (Honeycomb) and 5; 1528 carries 301 (Snake Fangs) and 8.</item>
+    /// <item>10076/10081 <c>+20</c> / <c>+36</c> - the same pair four bytes earlier:
+    /// 1526 carries 300 and 5, 1528 carries 301 and 8, 1146 carries 123 and
+    /// 10.</item>
+    /// <item>the login snapshot's descriptor <c>+32</c> / <c>+48</c> - eight bytes
+    /// later than 10082's pair, because the descriptor's kill arrays also sit eight
+    /// bytes late (monster +40, count +56). Quest 1557 carries 303 (Deer Antler)
+    /// and 10, with its kill objective 1034 at +40 wanting 100 at +56.</item>
+    /// </list>
+    /// <para>
+    /// Leaving the pair zero is what makes such a quest show only its kill
+    /// objective, which is what this server used to do for every quest.
+    /// </para>
+    /// </remarks>
+    private const int ObjectiveAnswerItemIdOffset = 24;
+    private const int ObjectiveAnswerItemCountOffset = 40;
+
+    /// <summary>The 10076/10081 offsets of the item pair.</summary>
+    private const int QuestNextDetailItemIdOffset = 20;
+    private const int QuestNextDetailItemCountOffset = 36;
+
+    /// <summary>The login snapshot descriptor's offsets of the item pair.</summary>
+    private const int QuestSnapshotItemIdOffset = 32;
+    private const int QuestSnapshotItemCountOffset = 48;
+
+    /// <summary>
     /// How many targets the parallel objective arrays can hold.
     /// </summary>
     /// <remarks>
-    /// The monster array starts at 10082 <c>+32</c> and the count array at
-    /// <c>+48</c>, sixteen bytes apart; the login snapshot's descriptor gives each
-    /// of its two arrays twelve bytes before the next field. Six is therefore what
-    /// every frame can carry, and no quest in the content names more than three
-    /// targets.
+    /// Four. The monster array starts at 10082 <c>+32</c> and the count array at
+    /// <c>+48</c>, sixteen bytes apart, but the quest's item pair sits inside that
+    /// gap - the item's count is the word at <c>+40</c>, which is exactly where a
+    /// fifth kill slot would be. The reference server's own answer for quest 526
+    /// proves the array stops short of it: it reads <c>1028</c> in slot 0, nothing
+    /// in slots 1 to 3, and <c>5</c> - how many Snake Tails the quest wants - at
+    /// <c>+40</c>. The same four-slot array is at the snapshot descriptor's
+    /// <c>+40</c>, whose item count is the word at <c>+48</c>.
+    /// <para>
+    /// Clearing past the fourth slot would wipe the item count, which is how this
+    /// went wrong once already. No quest in the content names more than three
+    /// targets, so four has room to spare.
+    /// </para>
     /// </remarks>
-    private const int QuestObjectiveMaximumSlots = 6;
+    private const int QuestObjectiveMaximumSlots = 4;
 
     /// <summary>
     /// The 10076 equivalents of those two fields, four bytes earlier.
@@ -107,20 +183,72 @@ internal static partial class PacketBuilder
     private const int QuestSnapshotDescriptorBytes = 96;
 
     /// <summary>
+    /// Bytes one quest occupies in the login snapshot: its descriptor, its eight
+    /// 72-byte reward slots and eight bytes of padding.
+    /// </summary>
+    /// <remarks>
+    /// The snapshot is not "every descriptor, then every record" - each quest is a
+    /// block of its own, and the next quest's descriptor follows its predecessor's
+    /// reward slots. Read off the reference server's own three-quest frame
+    /// (2026-10-04 09:00:49), which carries quests 1557, 1158 and 1542 with their
+    /// descriptors at <c>+8</c>, <c>+688</c> and <c>+1368</c>, and 1557's first
+    /// reward slots - item 5802 at <c>+112</c>, 14280 at <c>+184</c> - inside its
+    /// own block.
+    /// <para>
+    /// The arithmetic is what proves it: <c>8 + 3 * 680 = 2048</c> is exactly the
+    /// captured frame's length, so a 2048-byte snapshot holds three quests, not the
+    /// twelve the old "descriptors then records" reading suggested. Writing the
+    /// second descriptor at <c>+104</c> instead - which is what this builder used
+    /// to do - put it where the client reads the first quest's reward slots, so a
+    /// character carrying two quests only ever saw the first of them.
+    /// </para>
+    /// </remarks>
+    private const int QuestSnapshotBlockBytes = 680;
+
+    /// <summary>How many 72-byte reward slots one quest's block carries.</summary>
+    private const int QuestSnapshotRecordSlots = 8;
+
+    /// <summary>
     /// Where a descriptor carries the target monster, how many are wanted, the
-    /// kill-quest marker and how many are done, measured from the quest id.
+    /// kill-quest marker, whether the objective is met and how many are done,
+    /// measured from the quest id.
     /// </summary>
     private const int QuestSnapshotMonsterOffset = 40;
     private const int QuestSnapshotRequiredOffset = 56;
     private const int QuestSnapshotKindOffset = 68;
+    private const int QuestSnapshotStateOffset = 72;
     private const int QuestSnapshotProgressOffset = 80;
 
     /// <summary>The marker a quest with something to kill carries.</summary>
     private const int QuestWithObjectivesKind = 8;
 
     /// <summary>
-    /// Where the first descriptor starts: the count is one 4-byte word, and the
-    /// captured frame's quest id sits at payload 4, which is frame 8.
+    /// What a descriptor carries at <see cref="QuestSnapshotStateOffset"/> while
+    /// its objective is still open, and once it has been met.
+    /// </summary>
+    /// <remarks>
+    /// Taken from the reference server's own snapshots. Its two 10090 frames for
+    /// quest 1540 in one session differ in exactly two words: the count-done word
+    /// at <c>+80</c> went from <c>12 &lt;&lt; 16</c> to <c>30 &lt;&lt; 16</c> when
+    /// the thirtieth kill landed, and this word went from 4 to 3. Every unfinished
+    /// kill quest in the captures carries 4 (520 at 0 of 10, 1523 at 0 of 12, 1531
+    /// at 0 of 20) and the met one carries 3; the quests with nothing to kill carry
+    /// 3 as well (518, 1522).
+    /// <para>
+    /// Leaving this word at the template's 3 is what made a quest read as finished
+    /// on the client the moment the character re-entered the world: the client drew
+    /// the hand-in the server's own objective check was right to refuse. The
+    /// accept-time frames never carried the stale value, which is why a quest
+    /// looked correct until the next login.
+    /// </para>
+    /// </remarks>
+    private const int QuestObjectiveOutstandingState = 4;
+    private const int QuestObjectiveSatisfiedState = 3;
+
+    /// <summary>
+    /// Where the first quest's block starts, which is also where its descriptor
+    /// starts: the count is one 4-byte word, and the captured frame's quest id sits
+    /// at payload 4, which is frame 8.
     /// </summary>
     private const int QuestSnapshotFirstDescriptor = 8;
 
@@ -135,6 +263,10 @@ internal static partial class PacketBuilder
     // length+opcode header:
     //
     //   10090 S2C  +4 count | 96-byte descriptors | 72-byte records
+    //              a descriptor, from its own start: +0 quest | +4 giver |
+    //              +8 responder | +40 target monster | +56 required |
+    //              +68 kill-quest marker | +72 objective met (4 open, 3 met) |
+    //              +80 count done << 16
     //   10083 S2C  +4 quest | +8 responder | +12 quest | +16 = 1
     //   10082 S2C  +4 giver | +8 responder | +12 quest | +16 slot count
     //              then 72-byte slots from +60: +8 reward item, +12..+28 -1 x5,
@@ -162,12 +294,13 @@ internal static partial class PacketBuilder
 
     /// <summary>One quest as the login snapshot describes it.</summary>
     /// <remarks>
-    /// The descriptor carries the target monster, how many are wanted and how many
-    /// are done, so a quest picked up again after a relog still shows what it is
-    /// waiting for. The offsets are the reference server's own: its snapshot for a
+    /// The descriptor carries the target monster, how many are wanted, how many
+    /// are done and whether the objective has been met, so a quest picked up again
+    /// after a relog still shows what it is waiting for instead of the hand-in it
+    /// cannot take. The offsets are the reference server's own: its snapshot for a
     /// character carrying quest 520 at three of ten had the monster at +40, the
-    /// count at +56, the kill-quest marker at +68 and <c>3 &lt;&lt; 16</c> - the
-    /// progress - at +80.
+    /// count at +56, the kill-quest marker at +68, the state at +72 and
+    /// <c>3 &lt;&lt; 16</c> - the progress - at +80.
     /// <para>
     /// <paramref name="Objectives"/> is the multi-target form: when it is given,
     /// every entry fills one slot of the parallel arrays and the single
@@ -184,7 +317,8 @@ internal static partial class PacketBuilder
         uint MonsterId = 0,
         int Required = 0,
         int Current = 0,
-        IReadOnlyList<QuestSnapshotObjective>? Objectives = null);
+        IReadOnlyList<QuestSnapshotObjective>? Objectives = null,
+        bool? RequirementsSatisfied = null);
 
     /// <summary>
     /// Builds the opcode-10090 accepted-quest snapshot from the captured frame.
@@ -201,8 +335,16 @@ internal static partial class PacketBuilder
     /// The capture holds one quest, and for one quest this reproduces it byte for
     /// byte - descriptor at payload 4 and record at payload 100, which is what
     /// <c>4 + 96</c> works out to. A character carrying several quests is the same
-    /// structure with the count raised, so the records follow the descriptors;
-    /// that part has no reference sample yet.
+    /// structure with the count raised, one block per quest.
+    /// <para>
+    /// The captured frame is 2048 bytes, which is exactly three quests
+    /// (<c>8 + 3 * 680 = 2048</c>). A character may carry more, so the frame is
+    /// grown to fit them and its declared length corrected; up to three it is the
+    /// captured 2048-byte frame untouched, which is what keeps the one-quest golden
+    /// byte for byte what the reference sent. Past three there is no reference
+    /// sample, and the extra bytes are the captured frame's own tail - each quest's
+    /// block is laid out the same either way.
+    /// </para>
     /// <para>
     /// An empty snapshot (count zero) leaves the frame's own slots alone: it
     /// advertises no quest, which is how a character holding none is represented.
@@ -210,7 +352,21 @@ internal static partial class PacketBuilder
     /// </remarks>
     public static byte[] QuestSnapshot(IReadOnlyList<QuestSnapshotEntry> quests)
     {
-        var packet = (byte[])LoginSnapshotFrame().Clone();
+        var template = LoginSnapshotFrame();
+        // The declared length is the frame's own u16 at +0, and the client trusts
+        // it, so a grown frame has to say so.
+        var needed = QuestSnapshotFirstDescriptor +
+            (quests.Count * QuestSnapshotBlockBytes);
+        var packet = needed > template.Length
+            ? new byte[needed]
+            : (byte[])template.Clone();
+        if (needed > template.Length)
+        {
+            template.CopyTo(packet, 0);
+        }
+
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(0, sizeof(ushort)), checked((ushort)packet.Length));
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(4, sizeof(uint)), (uint)quests.Count);
         if (quests.Count == 0)
@@ -232,6 +388,7 @@ internal static partial class PacketBuilder
             {
                 WriteSnapshotObjectives(
                     packet.AsSpan(descriptor),
+                    quest.QuestId,
                     descriptorObjectives);
             }
             else if (quest.Required > 0)
@@ -252,33 +409,87 @@ internal static partial class PacketBuilder
                 BinaryPrimitives.WriteInt32LittleEndian(
                     packet.AsSpan(descriptor + QuestSnapshotProgressOffset, 4),
                     Math.Clamp(quest.Current, 0, ushort.MaxValue) << 16);
+                BinaryPrimitives.WriteInt32LittleEndian(
+                    packet.AsSpan(descriptor + QuestSnapshotStateOffset, 4),
+                    quest.Current >= quest.Required
+                        ? QuestObjectiveSatisfiedState
+                        : QuestObjectiveOutstandingState);
             }
+            WriteCollectObjective(packet.AsSpan(descriptor), QuestSnapshotItemIdOffset,
+                QuestSnapshotItemCountOffset, quest.QuestId);
 
-            descriptor += QuestSnapshotDescriptorBytes;
-        }
-
-        var record = QuestSnapshotFirstDescriptor +
-            (quests.Count * QuestSnapshotDescriptorBytes);
-        foreach (var quest in quests)
-        {
-            WriteQuestRecord(packet, record, quest.QuestId);
-            record += QuestRecordBytes;
+            // The quest's own reward slots sit inside its block, right behind its
+            // descriptor - not in one shared run after every descriptor. See
+            // QuestSnapshotBlockBytes.
+            if (quest.RequirementsSatisfied is { } requirementsSatisfied)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(
+                    packet.AsSpan(descriptor + QuestSnapshotStateOffset, 4),
+                    requirementsSatisfied ? QuestObjectiveSatisfiedState : QuestObjectiveOutstandingState);
+            }
+            WriteQuestRecord(
+                packet,
+                descriptor + QuestSnapshotDescriptorBytes,
+                quest.QuestId);
+            descriptor += QuestSnapshotBlockBytes;
         }
 
         return packet;
     }
 
     /// <summary>
-    /// Writes one quest's 72-byte record slot over whatever the frame held.
+    /// Writes one quest's eight 72-byte reward slots over whatever the frame held.
     /// </summary>
     /// <remarks>
-    /// The slot is the first of the quest's captured 10082 reward slots - the two
-    /// frames use the same 72-byte record, which is why quest 518's slot carries
-    /// the same newbie gift bag at the same offset inside the slot. A quest with
-    /// no captured record keeps the frame's own empty-slot pattern rather than an
-    /// invented one.
+    /// The slots are the quest's own captured 10082 reward area, which is why quest
+    /// 518's block carries the same newbie gift bag at the same offset inside its
+    /// first slot: the two frames use one record layout. The reference's three-quest
+    /// snapshot fills several slots of a block - quest 1557's carries items 5802,
+    /// 14280, 14340 and 14260 - so the whole area is copied, not just its first
+    /// slot. Every slot the quest has no record for keeps the empty pattern rather
+    /// than an invented one.
     /// </remarks>
     private static void WriteQuestRecord(byte[] packet, int offset, uint questId)
+    {
+        var records = StarterQuestRewardRecords.Find(questId);
+
+        // Slot 0 is the quest's own record and is always written, so a quest with
+        // no captured area cannot inherit the template's - which belongs to another
+        // quest entirely.
+        WriteEmptyQuestSlot(packet, offset);
+        if (records is { Length: > 0 } area &&
+            !IsEmptyRewardSlot(area.AsSpan(0, QuestRecordBytes)))
+        {
+            area.AsSpan(0, QuestRecordBytes).CopyTo(
+                packet.AsSpan(offset, QuestRecordBytes));
+        }
+
+        // The later slots are the quest's other reward choices. A slot the quest
+        // has no record for is left exactly as the frame holds it: the captured
+        // frame's own empty slots are not all the same shape - its first three
+        // carry five -1 words and a 01010001 flag, the rest seven and 00000101 -
+        // so writing one uniform pattern over them changes bytes the capture fixes.
+        for (var slot = 1; slot < QuestSnapshotRecordSlots; slot++)
+        {
+            if (records is not { Length: > 0 } choices)
+            {
+                break;
+            }
+
+            var source = slot * QuestRecordBytes;
+            if (source + QuestRecordBytes > choices.Length ||
+                IsEmptyRewardSlot(choices.AsSpan(source, QuestRecordBytes)))
+            {
+                continue;
+            }
+
+            choices.AsSpan(source, QuestRecordBytes).CopyTo(
+                packet.AsSpan(offset + source, QuestRecordBytes));
+        }
+    }
+
+    /// <summary>Writes the frame's own empty-slot pattern at one record offset.</summary>
+    private static void WriteEmptyQuestSlot(byte[] packet, int offset)
     {
         packet.AsSpan(offset, QuestRecordBytes).Clear();
         for (var index = 0; index < 5; index++)
@@ -290,13 +501,6 @@ internal static partial class PacketBuilder
 
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(offset + 32, 4), QuestRecordEmptyFlag);
-
-        if (StarterQuestRewardRecords.Find(questId) is
-            { Length: >= QuestRecordBytes } records)
-        {
-            records.AsSpan(0, QuestRecordBytes).CopyTo(
-                packet.AsSpan(offset, QuestRecordBytes));
-        }
     }
 
     /// <summary>
@@ -354,7 +558,7 @@ internal static partial class PacketBuilder
         uint responderNpcId,
         uint questId)
     {
-        var objectives = StarterQuestObjectives.For(questId);
+        var objectives = Godswar.Server.Game.GameClientHandler.DisplayQuestObjectives(questId);
         if (objectives.Count == 0 &&
             CapturedQuestAnswers.TryGetValue(questId, out var capturedHex))
         {
@@ -389,6 +593,11 @@ internal static partial class PacketBuilder
             packet.AsSpan(8, sizeof(uint)), responderNpcId);
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(12, sizeof(uint)), questId);
+        // The item half of the quest's objectives is a pair of its own, and it is
+        // written whether or not the quest has anything to kill: the reference
+        // server's answers for 526/1526/1528 carry it beside their kill objective,
+        // and a quest whose text asks only for an item carries it with the kill
+        // arrays left empty. It goes last so the kill arrays' clear cannot reach it.
         if (hasObjectives)
         {
             // Every target the quest names goes into its own slot: the reference
@@ -405,6 +614,12 @@ internal static partial class PacketBuilder
                 packet.AsSpan(ObjectiveAnswerKindOffset, sizeof(int)),
                 QuestWithObjectivesKind);
         }
+
+        WriteCollectObjective(
+            packet,
+            ObjectiveAnswerItemIdOffset,
+            ObjectiveAnswerItemCountOffset,
+            questId);
 
         ApplyQuestRewardRecords(
             packet,
@@ -534,10 +749,24 @@ internal static partial class PacketBuilder
             var capturedPacket = Convert.FromHexString(captured);
             BinaryPrimitives.WriteUInt32LittleEndian(
                 capturedPacket.AsSpan(4, sizeof(uint)), giverNpcId);
+            // 抓包帧直接返回的话，这条详情里的奖励槽永远是参考服那一份 —— 工具改过的
+            // 奖励进不去，客户端详情里就看不到（519 有抓包详情、520 没有，所以 520 走
+            // 下面内建那条路反而正常）。和 QuestAnswer 的抓包分支一样：有覆盖才写，
+            // 没覆盖就保持抓包原样，免得动到本来正常显示的任务。
+            if (QuestRewardContentCatalog.Current.TryGetSlots(questId, out _))
+            {
+                ApplyQuestRewardRecords(
+                    capturedPacket,
+                    QuestNextDetailRecordOffset,
+                    questId,
+                    QuestNextDetailRecordBytes,
+                    4u);
+            }
+
             return capturedPacket;
         }
 
-        var detailObjectives = StarterQuestObjectives.For(questId);
+        var detailObjectives = Godswar.Server.Game.GameClientHandler.DisplayQuestObjectives(questId);
         var detailHasObjectives = detailObjectives.Count > 0;
         var packet = (byte[])HandInDetailBytes.Clone();
         BinaryPrimitives.WriteUInt32LittleEndian(
@@ -547,6 +776,9 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(QuestNextDetailKindOffset, sizeof(uint)),
             detailHasObjectives ? 8u : 4u);
+        // The detail carries the same item pair as the accept answer, four bytes
+        // earlier; 1526's own detail is the sample (300 and 5). Written after the
+        // kill arrays so their clear cannot reach it.
         if (detailHasObjectives)
         {
             // The same parallel arrays as 10082, four bytes earlier. The reference
@@ -559,6 +791,12 @@ internal static partial class PacketBuilder
                 QuestNextDetailRequiredOffset,
                 detailObjectives);
         }
+
+        WriteCollectObjective(
+            packet,
+            QuestNextDetailItemIdOffset,
+            QuestNextDetailItemCountOffset,
+            questId);
 
         ApplyQuestRewardRecords(
             packet,
@@ -592,6 +830,14 @@ internal static partial class PacketBuilder
         var area = ResolveQuestRewardArea(questId, objectiveKind);
         var length = Math.Min(bytes, area.Length);
         area.AsSpan(0, length).CopyTo(packet.AsSpan(offset, length));
+        QuestRewardDiagnostics.Write(
+            questId,
+            objectiveKind,
+            offset,
+            bytes,
+            area.Length,
+            length,
+            packet);
     }
 
     /// <summary>
@@ -621,9 +867,7 @@ internal static partial class PacketBuilder
     /// The reward area the quest shipped with, ignoring any GM override.
     /// </summary>
     /// <remarks>
-    /// The client keeps the menu it was shown when it accepted the quest, so a
-    /// hand-in can legitimately announce an item from this area even though the
-    /// current answer offers a replaced one.
+    /// Used only when the GM has not replaced the reward menu.
     /// </remarks>
     internal static byte[] ResolveBaseQuestRewardArea(
         uint questId,
@@ -635,10 +879,18 @@ internal static partial class PacketBuilder
                 (questId, objectiveKind == 8u ? 4u : 8u),
                 out areaHex))
         {
-            return Convert.FromHexString(areaHex);
+            var capturedArea = Convert.FromHexString(areaHex);
+            QuestRewardDiagnostics.Source(questId, objectiveKind, "captured", capturedArea);
+            return capturedArea;
         }
 
-        return StarterQuestRewardRecords.Find(questId) ?? EmptyQuestRewardArea;
+        var starterArea = StarterQuestRewardRecords.Find(questId);
+        QuestRewardDiagnostics.Source(
+            questId,
+            objectiveKind,
+            starterArea is null ? "empty" : "starter",
+            starterArea ?? EmptyQuestRewardArea);
+        return starterArea ?? EmptyQuestRewardArea;
     }
 
     /// <summary>
@@ -647,12 +899,27 @@ internal static partial class PacketBuilder
     /// swapped in, and every slot it leaves out is empty.
     /// </summary>
     /// <remarks>
-    /// Only the item id is rewritten. The rest of a 72-byte slot - the icon words
-    /// at +16/+20 and the icon file at +24 - is copied from the quest's own
-    /// captured slot when it had one, and otherwise from the captured empty slot,
-    /// so a replacement keeps the shape the client already renders. Writing those
-    /// words from the new item's own icon data is not done here: the mapping
-    /// between an item template's icon column and these words is not verified.
+    /// A 72-byte slot carries, in order: the item id at +8, <b>five attribute ids</b>
+    /// at +12/+16/+20/+24/+28 (<c>FFFFFFFF</c> = empty), the quality and star bytes
+    /// at +32/+33, and zeros after that.
+    /// <para>
+    /// The attribute words are ids from <c>item_attribute_templates</c>, the same
+    /// table the GM tool's "添加属性" picker uses - the id itself is the tier
+    /// (0 = physical attack I, 1 = II, 3 = IV), so no separate level is needed.
+    /// Verified against the captured answer of quest 519, whose reward is
+    /// <c>01 50 28 83 FF</c> = AttackB, PhysicalDamage, Hit, MaxHPB, empty, and
+    /// 80/40/60 are the ids the operator names "增加物理伤害/命中/暴击加成".
+    /// </para>
+    /// <para>
+    /// An earlier revision of this comment called +16/+20 the "icon words" and
+    /// +24 the "icon file". That was wrong: the client resolves the icon from the
+    /// item id, and 131 is <c>MaxHPB</c> (max health II), which is why every class
+    /// weapon's captured slot carries it.
+    /// </para>
+    /// <para>
+    /// Everything the override does not name keeps the captured bytes, so a quest
+    /// the tool never touched answers byte-for-byte as it was captured.
+    /// </para>
     /// </remarks>
     private static byte[] ApplyRewardSlotOverrides(
         byte[] area,
@@ -662,7 +929,8 @@ internal static partial class PacketBuilder
         for (var slot = 0; slot < QuestRewardItemCatalog.MaximumSlots; slot++)
         {
             var captured = ReadRewardSlot(area, slot);
-            var template = IsEmptyRewardSlot(captured)
+            var overridden = overrides.Any(item => item.SlotIndex == slot);
+            var template = !overridden || IsEmptyRewardSlot(captured)
                 ? EmptyQuestRewardSlot
                 : captured;
             var target = result.AsSpan(
@@ -677,6 +945,45 @@ internal static partial class PacketBuilder
                     BinaryPrimitives.WriteUInt32LittleEndian(
                         target.Slice(RewardSlotItemIdOffset, sizeof(uint)),
                         item.ItemId);
+
+                    // 五个属性 ID 就此槽位自己的属性写死：工具配了几个就写几个，
+                    // 剩下的写 FFFFFFFF（空）。**不能只写"配了的那些"而把其余留给
+                    // 抓包字节** —— 否则拿一个原本带 4 条属性的槽位（例如 519）改成
+                    // 只带 1 条，剩下 3 条会残留原任务的属性。
+                    var attributes = item.Attributes;
+                    Span<short?> ids =
+                    [
+                        attributes.Attribute1,
+                        attributes.Attribute2,
+                        attributes.Attribute3,
+                        attributes.Attribute4,
+                        attributes.Attribute5
+                    ];
+                    for (var index = 0; index < RewardSlotAttributeSlots; index++)
+                    {
+                        var offset = RewardSlotAttributeOffset + (index * sizeof(uint));
+                        if (offset + sizeof(uint) > target.Length)
+                        {
+                            break;
+                        }
+
+                        var id = ids[index];
+                        BinaryPrimitives.WriteUInt32LittleEndian(
+                            target.Slice(offset, sizeof(uint)),
+                            id is { } value && value > 0 ? (uint)value : uint.MaxValue);
+                    }
+
+                    // 品质与星级(grade)就在这一档位的 +32/+33 两个**单字节**上：客户端把
+                    // "精致的/重皮护胸"这种前缀按品质拼出来（名字表里只有"轻皮护胸"，
+                    // 没有"精致的"），抓包里 520 是 03（精致）、其余任务是 01（加固）-
+                    // 按 2 字节写会把 +33/+35 一起清掉（这一条是检查抓出来的）。
+                    // 被工具覆盖过的槽位按覆盖值写，跟"发放时盖到物品实例上的属性"保持一致；
+                    // 没被覆盖的槽位仍然原样保留抓包字节。
+                    if (target.Length >= RewardSlotQualityOffset + 2)
+                    {
+                        target[RewardSlotQualityOffset] = (byte)attributes.Quality;
+                        target[RewardSlotQualityOffset + 1] = (byte)attributes.Grade;
+                    }
                 }
             }
         }
@@ -735,8 +1042,45 @@ internal static partial class PacketBuilder
     }
 
     /// <summary>
+    /// Writes a quest's item objective - the item id and how many are wanted -
+    /// into a frame's item pair, or clears it for a quest that names no item.
+    /// </summary>
+    /// <remarks>
+    /// A quest's objectives are not all kills: the client's own text also says
+    /// "collect 5 Snake Tails", and that half lives in its own pair of fields with
+    /// its own list on the client. The pair is the quest's own, so a quest without
+    /// one clears the area rather than leaving whatever the template held. See
+    /// <see cref="ObjectiveAnswerItemIdOffset"/> for the reference samples behind
+    /// each of the three offsets.
+    /// </remarks>
+    private static void WriteCollectObjective(
+        Span<byte> packet,
+        int itemIdOffset,
+        int itemCountOffset,
+        uint questId)
+    {
+        var itemId = 0u;
+        var required = 0;
+        if (StarterQuestCollectObjectives.TryGet(questId, out var objective))
+        {
+            itemId = objective.ItemId;
+            // Zero means the client goal specifies a virtual collection, but
+            // no verified native display ID is available. Its progress is sent
+            // through a personal notice; never fabricate a native item record.
+            required = itemId == 0 ? 0 : objective.Required;
+        }
+
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.Slice(itemIdOffset, sizeof(uint)),
+            itemId);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.Slice(itemCountOffset, sizeof(uint)),
+            (uint)Math.Max(0, required));
+    }
+
+    /// <summary>
     /// Writes a carried quest's targets into one login-snapshot descriptor, plus
-    /// the progress of each slot.
+    /// the progress of each slot and whether the quest's objective has been met.
     /// </summary>
     /// <remarks>
     /// The monster and count arrays are the same parallel u16 arrays as 10082, at
@@ -745,9 +1089,16 @@ internal static partial class PacketBuilder
     /// done in the high half of the word at <c>+80</c> (<c>3 &lt;&lt; 16</c> for
     /// three of ten), so slot <c>i</c> keeps that shape at <c>+80 + 4i</c>. That
     /// per-slot stride is inferred, not captured.
+    /// <para>
+    /// The state word at <c>+72</c> is one word per quest, not per slot, so a quest
+    /// counts as met only once every target has been: the captures hold one target
+    /// per descriptor, and reporting a partly finished multi-target quest as met is
+    /// the same client-side hand-in the server then refuses.
+    /// </para>
     /// </remarks>
     private static void WriteSnapshotObjectives(
         Span<byte> descriptor,
+        uint questId,
         IReadOnlyList<QuestSnapshotObjective> objectives)
     {
         descriptor.Slice(
@@ -771,6 +1122,17 @@ internal static partial class PacketBuilder
                     objectives[slot].Required,
                     0,
                     ushort.MaxValue)));
+            // The descriptor is 96 bytes and the progress words are the last field
+            // in it, so only the slots whose word still fits inside this descriptor
+            // are written. The fourth slot's word is the last one that does, which
+            // is the same four the monster array holds, so this is a guard rather
+            // than a case that is reached today.
+            if (QuestSnapshotProgressOffset + (slot * 4) + 4 >
+                QuestSnapshotDescriptorBytes)
+            {
+                break;
+            }
+
             BinaryPrimitives.WriteInt32LittleEndian(
                 descriptor.Slice(QuestSnapshotProgressOffset + (slot * 4), 4),
                 Math.Clamp(objectives[slot].Current, 0, ushort.MaxValue) << 16);
@@ -779,7 +1141,146 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteInt32LittleEndian(
             descriptor.Slice(QuestSnapshotKindOffset, 4),
             QuestWithObjectivesKind);
+        // The descriptor's item pair, eight bytes later than the answer's: quest
+        // 1557's own snapshot carries 303 (Deer Antler) at +32 and the ten it wants
+        // at +48, beside its kill objective. Written after the arrays' clear, which
+        // stops at the fourth slot so it cannot reach +32 or +48.
+        WriteCollectObjective(
+            descriptor,
+            QuestSnapshotItemIdOffset,
+            QuestSnapshotItemCountOffset,
+            questId);
+        var satisfied = true;
+        for (var slot = 0; slot < count; slot++)
+        {
+            if (objectives[slot].Current < objectives[slot].Required)
+            {
+                satisfied = false;
+                break;
+            }
+        }
+
+        BinaryPrimitives.WriteInt32LittleEndian(
+            descriptor.Slice(QuestSnapshotStateOffset, 4),
+            satisfied
+                ? QuestObjectiveSatisfiedState
+                : QuestObjectiveOutstandingState);
     }
+
+    /// <summary>
+    /// Builds one of the global quest-mark lists (10078 / 10079).
+    /// </summary>
+    /// <remarks>
+    /// These are what the client's quest-search panel reads: a flat list of the npc
+    /// interaction ids that currently have a quest for the character, so it can draw
+    /// the mark over them and list the quests without the player walking the map.
+    /// The frame is a fixed 648 bytes - the reference server sends it that size even
+    /// when it carries one id - with <c>+4</c> the count and one u32 id each from
+    /// <c>+8</c>, the rest zero.
+    /// <para>
+    /// Captured shape, 2026-10-06 13:42:25 (10078, one id):
+    /// <c>88 02 5e 27 01 00 00 00 ac 13 00 00</c> then zeros - count 1, id 5036.
+    /// The paired 2026-09-28 02:09:33 login burst carries the same id in both
+    /// frames, which is what an npc that both gives and receives a quest looks like.
+    /// </para>
+    /// </remarks>
+    public static byte[] QuestNpcMarks(ushort opcode, IReadOnlyList<uint> npcIds)
+    {
+        ArgumentNullException.ThrowIfNull(npcIds);
+        var packet = new byte[QuestNpcMarkBytes];
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(0, sizeof(ushort)), QuestNpcMarkBytes);
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2, sizeof(ushort)), opcode);
+        var count = Math.Min(npcIds.Count, QuestNpcMarkCapacity);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(4, sizeof(uint)), (uint)count);
+        for (var index = 0; index < count; index++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                packet.AsSpan(QuestNpcMarkFirstId + (index * sizeof(uint)), sizeof(uint)),
+                npcIds[index]);
+        }
+
+        return packet;
+    }
+
+    /// <summary>Bytes of a global quest-mark list frame, header included.</summary>
+    private const int QuestNpcMarkBytes = 648;
+
+    /// <summary>Where the first npc id sits, and how many fit.</summary>
+    private const int QuestNpcMarkFirstId = 8;
+    private const int QuestNpcMarkCapacity =
+        (QuestNpcMarkBytes - QuestNpcMarkFirstId) / sizeof(uint);
+
+    /// <summary>
+    /// Builds the answer to the quest window's lookup panel, S2C 10092.
+    /// </summary>
+    /// <remarks>
+    /// Captured 2026-10-06 16:45:40 as the reply to the panel's own request, a
+    /// C2S 10091 carrying <c>16</c>: a fixed 48 bytes with <c>+4</c> the count and
+    /// then twenty u16 quest ids from <c>+8</c>. The reference answered the same 19
+    /// ids to four clicks in a row, and answered <c>0</c> in the same session once
+    /// the character held the only quest it could still take, so the list is
+    /// per-character state and not a constant to replay.
+    /// <para>
+    /// The caller passes the quests this server would actually accept, so the panel
+    /// cannot advertise one <c>AcceptQuestAsync</c> would refuse. An empty list
+    /// comes out byte-identical to the frame the reference sent behind an accept,
+    /// which is what that path keeps sending.
+    /// </para>
+    /// <para>
+    /// Origin.exe 005D11D6 and 005D14AE limit ordinary characters to twenty
+    /// search buttons; thirty is a special client mode (byte +2B9 equals 10).
+    /// Sending thirty to an ordinary character leaves map headings visible
+    /// beyond the rows the layout places, producing overlapping text. Keep the
+    /// captured twenty-slot frame for every character.
+    /// </para>
+    /// </remarks>
+    public static byte[] QuestLookupAnswer(IReadOnlyList<uint> questIds)
+    {
+        ArgumentNullException.ThrowIfNull(questIds);
+        var count = Math.Min(questIds.Count, QuestLookupCapacity);
+        var bytes = Math.Max(
+            QuestLookupBytes,
+            QuestLookupFirstId + (count * sizeof(ushort)));
+        var packet = new byte[bytes];
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(0, sizeof(ushort)), checked((ushort)bytes));
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2, sizeof(ushort)), Opcodes.QuestActionPairAck);
+
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(4, sizeof(uint)), (uint)count);
+        for (var index = 0; index < count; index++)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                packet.AsSpan(
+                    QuestLookupFirstId + (index * sizeof(ushort)),
+                    sizeof(ushort)),
+                checked((ushort)questIds[index]));
+        }
+
+        return packet;
+    }
+
+    /// <summary>Bytes of the shortest quest-lookup answer, header included.</summary>
+    /// <remarks>
+    /// The length every capture shows, and the shape an empty or short list keeps.
+    /// </remarks>
+    private const int QuestLookupBytes = 48;
+
+    /// <summary>Where the first quest id sits.</summary>
+    private const int QuestLookupFirstId = 8;
+
+    /// <summary>
+    /// How many quest ids the frame can carry.
+    /// </summary>
+    /// <remarks>
+    /// The ordinary client's layout handles twenty rows despite thirty XML
+    /// controls. Additional eligible quests remain available at their NPCs.
+    /// </remarks>
+    internal const int QuestLookupCapacity = 20;
 
     /// <summary>
     /// Builds the opcode-10077 npc quest list, the table behind the quest mark

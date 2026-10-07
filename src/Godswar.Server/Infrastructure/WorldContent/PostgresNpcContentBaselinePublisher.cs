@@ -15,7 +15,7 @@ internal static class PostgresNpcContentBaselinePublisher
 {
     private const int PublicationLockNamespace = 1_193_657_936;
     private const int PublicationLockKey = 1_448_298_801;
-    private const string Publisher = "server-baseline-v9";
+    private const string Publisher = "server-baseline-v11";
 
     public static async Task<NpcContentPublicationResult>
         EnsurePublishedAsync(
@@ -52,7 +52,7 @@ internal static class PostgresNpcContentBaselinePublisher
             cancellationToken);
         if (current is not null && string.Equals(
                 current.Revision,
-                NpcContentBaselineV9.ExpectedRevision,
+                NpcContentBaselineV11.ExpectedRevision,
                 StringComparison.Ordinal))
         {
             await transaction.CommitAsync(cancellationToken);
@@ -90,28 +90,36 @@ internal static class PostgresNpcContentBaselinePublisher
             !string.Equals(
                 current.Revision,
                 NpcContentBaselineV8.ExpectedRevision,
+                StringComparison.Ordinal) &&
+            !string.Equals(
+                current.Revision,
+                NpcContentBaselineV9.ExpectedRevision,
+                StringComparison.Ordinal) &&
+            !string.Equals(
+                current.Revision,
+                NpcContentBaselineV10.ExpectedRevision,
                 StringComparison.Ordinal))
         {
             throw new InvalidDataException(
-                "The published NPC revision is neither a reviewed V1-V8 " +
-                "predecessor nor the reviewed V9 release.");
+                "The published NPC revision is neither a reviewed V1-V10 " +
+                "predecessor nor the reviewed V11 release.");
         }
 
         var mapIds = await ReadMapIdsAsync(
             connection,
             transaction,
             cancellationToken);
-        var definitions = NpcContentBaselineV9.LoadDefinitions();
+        var definitions = NpcContentBaselineV11.LoadDefinitions();
         var canonical = await ValidateAndCanonicalizeAsync(
             mapIds,
             definitions,
             cancellationToken);
         var revision = WorldContentRevisionHasher.HashNpcs(canonical);
         if (revision.EntryCount !=
-                NpcContentBaselineV9.ExpectedEntryCount ||
+                NpcContentBaselineV11.ExpectedEntryCount ||
             !string.Equals(
                 revision.Sha256,
-                NpcContentBaselineV9.ExpectedRevision,
+                NpcContentBaselineV11.ExpectedRevision,
                 StringComparison.Ordinal))
         {
             throw new InvalidDataException(

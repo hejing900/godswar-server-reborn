@@ -23,6 +23,11 @@ internal sealed record GearMentorTransactionResult(
 
 internal interface IGameStore : IAsyncDisposable
 {
+    Task<bool> ConsumeQuestBagItemAsync(int accountId, int characterId, int slot,
+        uint itemId, int expectedStack, IReadOnlyList<CharacterQuest> before,
+        IReadOnlyList<CharacterQuest> after, uint newQuestId = 0,
+        CancellationToken cancellationToken = default) => Task.FromResult(false);
+
     Task EnsureSeedDataAsync(CancellationToken cancellationToken = default);
 
     Task SaveCharacterPositionAsync(
@@ -56,6 +61,31 @@ internal interface IGameStore : IAsyncDisposable
         int characterId,
         IReadOnlyList<CharacterQuest> quests,
         IReadOnlyList<uint> completedQuestIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the character's per-day quest completion counts.
+    /// </summary>
+    /// <remarks>
+    /// The day stamp comes back with the count so the caller can apply the 12:00
+    /// rollover: a row stamped with another day counts as zero.
+    /// </remarks>
+    Task<IReadOnlyDictionary<uint, GameCharacter.QuestDailyCount>>
+        LoadQuestDailyCompletionsAsync(
+            int characterId,
+            CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes the character's per-day quest completion counts.
+    /// </summary>
+    /// <remarks>
+    /// Called from the hand-in path, so the count is durable the moment the quest
+    /// is paid out and a restart cannot reset it.
+    /// </remarks>
+    Task SaveQuestDailyCompletionsAsync(
+        int accountId,
+        int characterId,
+        IReadOnlyDictionary<uint, GameCharacter.QuestDailyCount> counts,
         CancellationToken cancellationToken = default);
 
     /// <summary>

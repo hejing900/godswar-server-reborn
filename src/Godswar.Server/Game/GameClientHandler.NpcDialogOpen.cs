@@ -50,6 +50,17 @@ internal sealed partial class GameClientHandler
             $"carried={_character?.Quests.Count ?? 0}",
             []);
 
+        // Operator-authored GM NPCs answer next. They are injected into the map
+        // roster by the GM layer at login, so the published route lookup below
+        // finds nothing for their key and would leave every click unanswered.
+        if (await TryHandleGmNpcDialogOpenAsync(npc, cancellationToken))
+        {
+            QuestFrameTrace.Append(
+                $"[npc] dialog open branch=gm npc={npc.InteractionId} key={npc.NpcKey}",
+                []);
+            return;
+        }
+
         // A Wonderland run's own actors answer first. The eight island
         // teleporters, the entrance blackmarket and the eight treasure chests are
         // injected into the instance roster rather than published as map content,
@@ -165,6 +176,22 @@ internal sealed partial class GameClientHandler
         if (IsWishingPool(npc))
         {
             await SendWishingPoolMenuAsync(npc, cancellationToken);
+            return;
+        }
+
+        // The Cursed Land's in-map transport actors own a client script window
+        // (function 96 = NPC_FLAG_SYS_RANDOM, 97 = NPC_FLAG_SYS_HOME) that draws
+        // no menu at all: the reference advertised the function and moved the
+        // character the moment the client asked for its entries. Answered before
+        // the scripted-dialogue lookup because they carry no dialogue table.
+        if (CursedLandTransportProtocol.TryGetInMapFunction(
+                npc.NpcKey,
+                out var cursedLandFunction))
+        {
+            await SendCursedLandTransporterOpenAsync(
+                npc,
+                cursedLandFunction,
+                cancellationToken);
             return;
         }
 

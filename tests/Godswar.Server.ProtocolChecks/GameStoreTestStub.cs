@@ -231,6 +231,19 @@ internal abstract class GameStoreTestStub :
         CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
+    public virtual Task<IReadOnlyDictionary<uint, GameCharacter.QuestDailyCount>>
+        LoadQuestDailyCompletionsAsync(
+            int characterId,
+            CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
+    public virtual Task SaveQuestDailyCompletionsAsync(
+        int accountId,
+        int characterId,
+        IReadOnlyDictionary<uint, GameCharacter.QuestDailyCount> counts,
+        CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
     public virtual Task<CharacterWalletResult?> GrantQuestCurrencyAsync(
         int accountId,
         int characterId,

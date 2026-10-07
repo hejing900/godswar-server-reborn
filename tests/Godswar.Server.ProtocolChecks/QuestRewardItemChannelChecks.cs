@@ -66,6 +66,32 @@ internal static class QuestRewardItemChannelChecks
     /// The catalog is process-wide, so this check installs its own snapshot and
     /// puts the empty one back before it returns.
     /// </remarks>
+    /// <summary>临时：把一个帧的头部和奖励区打成可对比的形式。</summary>
+    private static void PrintFrame(string label, byte[] packet, int rewardOffset)
+    {
+        var from = Math.Max(0, rewardOffset - 8);
+        var count = Math.Min(packet.Length - from, 176);
+        Console.WriteLine(
+            $"[frame-dump] {label} len={packet.Length} " +
+            $"head={Convert.ToHexString(packet.AsSpan(0, Math.Min(20, packet.Length)))}");
+        Console.WriteLine(
+            $"[frame-dump] {label} @{from}..+{count} = " +
+            Convert.ToHexString(packet.AsSpan(from, count)));
+        for (var slot = 0; slot < 4; slot++)
+        {
+            var start = rewardOffset + (slot * 72);
+            if (start + 36 > packet.Length)
+            {
+                break;
+            }
+
+            Console.WriteLine(
+                $"[frame-dump] {label} slot{slot} item=" +
+                $"{BinaryPrimitives.ReadUInt32LittleEndian(packet.AsSpan(start + 8, 4))} " +
+                $"quality={packet[start + 32]} star={packet[start + 33]}");
+        }
+    }
+
     private static void CheckGmOverrides()
     {
         const int answerRecordOffset = 64;
@@ -115,6 +141,99 @@ internal static class QuestRewardItemChannelChecks
                         replaced.AsSpan(answerRecordOffset + 12, 4)),
                 "the replacement keeps the captured slot shape");
 
+            // 品质（和等级 grade）在奖励档位的 +32 上：客户端就是拿它拼"精致的"这种
+            // 前缀（名字表里只有"轻皮护胸"）。被覆盖的槽位必须写进去，没覆盖的槽位
+            // 不能被动 - 520 的抓包本来就是 03 01，所以没覆盖时它仍是 03。
+            QuestRewardContentCatalog.Install(new QuestRewardContentSnapshot(
+                [
+                    new QuestRewardSlotOverride(
+                        520u,
+                        0,
+                        2100u,
+                        ItemGrantAttributes.None with
+                        {
+                            Quality = 3,
+                            Attribute1 = 80,
+                            Attribute3 = 40
+                        })
+                ],
+                []));
+            var withAttributes = PacketBuilder.ResolveQuestRewardArea(520u, 8u);
+            Check.Equal(
+                (byte)3,
+                withAttributes[32],
+                "the override writes the configured quality into the reward slot");
+            Check.Equal(
+                (byte)1,
+                withAttributes[33],
+                "an unconfigured star stays 1 (the tool's 0/1 default)");
+            Check.Equal(
+                80u,
+                BinaryPrimitives.ReadUInt32LittleEndian(withAttributes.AsSpan(12, 4)),
+                "attribute slot 1 carries the configured attribute id");
+            Check.Equal(
+                uint.MaxValue,
+                BinaryPrimitives.ReadUInt32LittleEndian(withAttributes.AsSpan(16, 4)),
+                "an attribute slot the override skips is empty");
+            Check.Equal(
+                40u,
+                BinaryPrimitives.ReadUInt32LittleEndian(withAttributes.AsSpan(20, 4)),
+                "attribute slot 3 carries its own id");
+            Check.Equal(
+                uint.MaxValue,
+                BinaryPrimitives.ReadUInt32LittleEndian(withAttributes.AsSpan(28, 4)),
+                "the fifth attribute slot is empty too");
+            Check.Equal(
+                (byte)3,
+                PacketBuilder.ResolveBaseQuestRewardArea(520u, 8u)[32],
+                "a quest the tool did not touch keeps its captured quality");
+            Check.Equal(
+                (byte)1,
+                PacketBuilder.ResolveBaseQuestRewardArea(520u, 8u)[33],
+                "and its captured star");
+            Check.Equal(
+                (byte)1,
+                PacketBuilder.ResolveQuestRewardArea(520u, 8u)[34],
+                "the two bytes after quality and star are left alone");
+
+            // 519 的"后续详情"帧命中抓包（CapturedNextQuestDetails 里有 519、没有 520），
+            // 修之前那条分支把抓包字节原样返回、奖励区根本不写 —— 这正是"520 能看到奖励、
+            // 519 看不到"的唯一区别。这里断言覆盖现在能进到那条帧里。
+            QuestRewardContentCatalog.Install(new QuestRewardContentSnapshot(
+                [
+                    new QuestRewardSlotOverride(
+                        519u,
+                        0,
+                        4321u,
+                        ItemGrantAttributes.None with { Quality = 3 })
+                ],
+                []));
+            var detail = PacketBuilder.QuestNextDetail(5103u, 519u);
+            Check.Equal(
+                4321u,
+                BinaryPrimitives.ReadUInt32LittleEndian(detail.AsSpan(60 + 8, 4)),
+                "an override reaches the captured follow-up detail frame (519)");
+            Check.Equal(
+                (byte)3,
+                detail[60 + 32],
+                "and its quality byte travels with it");
+            Check.Equal(uint.MaxValue,
+                BinaryPrimitives.ReadUInt32LittleEndian(detail.AsSpan(60 + 72 + 8, 4)),
+                "a GM menu does not retain an original reward in an omitted slot");
+
+            // 临时对比：把"详情帧"和"后续详情帧"的头部与奖励区开头都打出来，
+            // 用来看客户端那句话（名字取到第二个物品、品质取到第一个物品）是哪一种错位。
+            var answer = PacketBuilder.QuestAnswer(5103u, 5104u, 519u);
+            PrintFrame("10082 (quest answer)", answer, 64);
+            PrintFrame("10076 (next detail)", detail, 60);
+
+            QuestRewardContentCatalog.Install(new QuestRewardContentSnapshot(
+                [
+                    new QuestRewardSlotOverride(518u, 0, 9999u, ItemGrantAttributes.None),
+                    new QuestRewardSlotOverride(518u, 1, 8888u, ItemGrantAttributes.None)
+                ],
+                [new QuestRewardValueOverride(518u, 4321, 7, 1234, 56)]));
+
             var payout = QuestRewardContentCatalog.Current.Resolve(
                 518u,
                 new QuestRewardPayout(1, 2, 3, 4));
@@ -128,9 +247,8 @@ internal static class QuestRewardItemChannelChecks
                     new QuestRewardPayout(1, 2, 3, 4),
                 "a quest with no values row keeps its own payout");
 
-            // The client keeps the menu it was shown when it accepted the quest,
-            // so the built-in items stay payable after the GM replaced them -
-            // otherwise a stale hand-in announces an item nothing will pay.
+            // The original menu remains source data, but the active menu is owned
+            // by the GM whenever an override exists.
             Check.True(
                 PacketBuilder.ResolveBaseQuestRewardArea(518u, 4u)[8..12]
                     .SequenceEqual(Convert.FromHexString("240F0000")),

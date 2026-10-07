@@ -462,6 +462,18 @@ internal sealed partial class GameClientHandler
                 $"total={npcDefinitions.Count}");
         }
 
+        // Operator-authored GM NPCs ride on top of the published roster, placed
+        // before the catalog is published so they go through the same reserved-id,
+        // grid and duplicate-key checks as every other actor.
+        var gmNpcs = GmNpcDialoguePolicy.BuildPlacements(
+            GmNpcOverrideCatalog.Current,
+            _character.CurrentMap,
+            compatibleNpcs);
+        if (gmNpcs.Count > 0)
+        {
+            npcDefinitions.AddRange(gmNpcs);
+        }
+
         var npcCatalog = await _registry.PublishMapNpcDefinitionsAsync(
             _character.CurrentMap,
             npcDefinitions,
@@ -479,7 +491,13 @@ internal sealed partial class GameClientHandler
             .Select(npc => npc.ObjectId)
             .ToHashSet();
 
-        var loadedMonsterDefinitions = mapContent.Monsters;
+        // Operator-authored GM overrides ride on top of the immutable published
+        // list: edits and disables first, then the brand-new points. Applied
+        // before the validation loop below so a GM row goes through exactly the
+        // same reserved-id, grid and NPC-collision filters as a published one.
+        var loadedMonsterDefinitions = MonsterOverridePolicy.Apply(
+            mapContent.Monsters,
+            _character.CurrentMap);
         var monsterDefinitions = new List<CapturedMonsterSpawn>(loadedMonsterDefinitions.Count);
         foreach (var monster in loadedMonsterDefinitions)
         {

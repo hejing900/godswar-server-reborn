@@ -43,6 +43,7 @@ internal sealed partial class GameClientHandler
         _registry.RegisterPveMonsterKillRewardPreparer(
             _session,
             PreparePveDerivedKillRewardAsync);
+        _registry.RegisterQuestPlayerKillRecorder(_session, RecordQuestPlayerKillAsync);
         _registry.UpdateActivePetHealingRuntime(
             _session,
             _characterLoadSnapshot?.Pets ??

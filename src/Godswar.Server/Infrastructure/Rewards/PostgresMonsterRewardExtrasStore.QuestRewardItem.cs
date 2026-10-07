@@ -36,7 +36,8 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
         uint itemId,
         int quantity,
         ItemGrantAttributes attributes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid rewardClaimId = default)
     {
         if (accountId <= 0 || characterId <= 0 || questId == 0 ||
             slotIndex < 0 ||
@@ -66,7 +67,7 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
         await LockDeathIdentityAsync(
             connection,
             transaction,
-            $"quest-reward:{characterId}:{questId}:{slotIndex}",
+            $"quest-reward:{characterId}:{questId}:{slotIndex}:{rewardClaimId}",
             cancellationToken);
 
         if (await ReadQuestRewardClaimAsync(
@@ -75,6 +76,7 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
                 characterId,
                 questId,
                 slotIndex,
+                rewardClaimId,
                 cancellationToken))
         {
             await transaction.CommitAsync(cancellationToken);
@@ -140,6 +142,7 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
             itemId,
             quantity,
             nextRevision,
+            rewardClaimId,
             cancellationToken);
         await InsertQuestRewardInventoryLedgerAsync(
             connection,
@@ -159,6 +162,7 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
             itemId,
             quantity,
             nextRevision,
+            rewardClaimId,
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new(
@@ -172,6 +176,7 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
         int characterId,
         uint questId,
         int slotIndex,
+        Guid rewardClaimId,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
@@ -181,6 +186,7 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
             WHERE character_id = @characterId
               AND quest_id = @questId
               AND slot_index = @slotIndex
+              AND completion_id = @completionId
             FOR UPDATE;
             """,
             connection,
@@ -188,6 +194,7 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("questId", checked((int)questId));
         command.Parameters.AddWithValue("slotIndex", checked((short)slotIndex));
+        command.Parameters.AddWithValue("completionId", rewardClaimId);
         return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
@@ -200,15 +207,16 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
         uint itemId,
         int quantity,
         long inventoryRevision,
+        Guid rewardClaimId,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
             """
             INSERT INTO public.quest_reward_item_claims (
                 character_id, quest_id, slot_index, item_id, quantity,
-                inventory_revision)
+                inventory_revision, completion_id)
             VALUES (@characterId, @questId, @slotIndex, @itemId, @quantity,
-                    @inventoryRevision);
+                    @inventoryRevision, @completionId);
             """,
             connection,
             transaction);
@@ -218,6 +226,7 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
         command.Parameters.AddWithValue("itemId", checked((int)itemId));
         command.Parameters.AddWithValue("quantity", checked((short)quantity));
         command.Parameters.AddWithValue("inventoryRevision", inventoryRevision);
+        command.Parameters.AddWithValue("completionId", rewardClaimId);
         if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
         {
             throw new InvalidDataException(
@@ -235,18 +244,25 @@ internal sealed partial class PostgresMonsterRewardExtrasStore
         uint itemId,
         int quantity,
         long inventoryRevision,
+        Guid rewardClaimId,
         CancellationToken cancellationToken)
     {
         // The operation is the reward slot itself, so a replay of the same
         // announcement carries the same identity instead of inventing a new
         // command for a claim the table would reject anyway.
-        var operationHash = SHA256.HashData(Encoding.UTF8.GetBytes(
-            $"quest-reward:{characterId}:{questId}:{slotIndex}"));
+        var operationKey = $"quest-reward:{characterId}:{questId}:{slotIndex}";
+        if (rewardClaimId != Guid.Empty)
+        {
+            operationKey += $":{rewardClaimId}";
+        }
+
+        var operationHash = SHA256.HashData(Encoding.UTF8.GetBytes(operationKey));
         var operationId = operationHash.AsSpan(0, 20).ToArray();
         var payload = JsonSerializer.Serialize(new
         {
             questId,
             slotIndex,
+            rewardClaimId,
             itemId,
             quantity,
             inventoryRevision

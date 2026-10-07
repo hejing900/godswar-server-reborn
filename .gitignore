@@ -6,6 +6,8 @@
 appsettings.Local.json
 appsettings.*.local.json
 data/
+!tools/data/
+!tools/data/*.json
 patcher/patcher.log
 *.pfx
 *.p12
@@ -36,6 +38,7 @@ phase4-completion/
 .codex-tmp/
 Dump/
 .tmp*
+.quest-deploy-overlay*/
 client/network-shim/diagnostics/
 **/__pycache__/
 *.py[cod]

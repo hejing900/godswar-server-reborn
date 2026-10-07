@@ -2,6 +2,15 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class MapInstance
 {
+    // Quest capability is validated by the registry; ordinary instance capture
+    // retains its own Medusa/Atlantis admission rules below.
+    internal bool TryCaptureQuestMonster(MonsterRuntimeSnapshot expected,
+        DateTimeOffset now, out MonsterDamageResult result)
+    {
+        if (MapId >= 200 || expected.Definition.MapId != MapId)
+        { result = default!; return false; }
+        lock (_monsterRuntimeGate) return TryCaptureMonsterCore(expected, now, out result);
+    }
     internal bool TryCaptureMonster(
         MonsterRuntimeSnapshot expected,
         DateTimeOffset now,

@@ -23,6 +23,9 @@ internal static partial class PetPresenceProtocolChecks
         CheckLoginLifecycleIdentityTransportSemantics();
         await CheckPersistedSummonedPetRestoreAsync();
         await CheckLoginCallsOutPersistedRecalledPetAsync();
+        await CheckLoginPreservesExhaustedPetAsync(satiety: 0, lifetime: 1360);
+        await CheckLoginPreservesExhaustedPetAsync(satiety: 100, lifetime: 0);
+        await CheckLoginRejectsInconsistentCareRefusalAsync();
         await CheckLoginCallOutRetryIsIdempotentAsync();
         await CheckMapRestorePreservesPersistedRecallAsync();
         await CheckMergedPetRestoreUsesUniteProjectionAsync();
@@ -160,6 +163,86 @@ internal static partial class PetPresenceProtocolChecks
                 },
             "secure login uses one authoritative session-lifecycle command");
     }
+
+    private static async Task CheckLoginPreservesExhaustedPetAsync(
+        int satiety,
+        int lifetime)
+    {
+        var pet = CreatePet(
+            isCarried: true,
+            isSummoned: false,
+            revision: 12) with
+        {
+            Satiety = satiety,
+            RemainingLifetime = lifetime
+        };
+        var executor = CreateCareExhaustedExecutor(pet);
+        await using var fixture = CreateRestoreFixture(pet, executor);
+
+        // This must complete normally so EnterUiReady can finish bootstrap.
+        await InvokeRestoreAsync(fixture.Handler, [pet], summonCarriedPet: true);
+
+        var packets = fixture.Transport.ReadLegacyPackets();
+        Check.True(
+            packets.Count == 2 &&
+            packets[0].SequenceEqual(PacketBuilder.PetOperationResult(
+                PetId, PetOperationResultCode.CallOutFailed)) &&
+            packets[1].SequenceEqual(PacketBuilder.PetOperationResult(
+                PetId, PetOperationResultCode.TakeSucceeded)),
+            "exhausted pet login keeps selection without a summoned model");
+        Check.True(
+            executor.TransitionCount == 1 &&
+            executor.TransitionEnvelope?.Command is
+                {
+                    Operation: PetPresenceCommandOperation.CallOut,
+                    Identity.IsServerSessionLifecycle: true
+                },
+            "exhausted pet login honors the authoritative summon refusal");
+    }
+
+    private static async Task CheckLoginRejectsInconsistentCareRefusalAsync()
+    {
+        var healthy = CreatePet(
+            isCarried: true,
+            isSummoned: false,
+            revision: 12);
+        await using var fixture = CreateRestoreFixture(
+            healthy, CreateCareExhaustedExecutor(healthy));
+        try
+        {
+            await InvokeRestoreAsync(
+                fixture.Handler, [healthy], summonCarriedPet: true);
+        }
+        catch (InvalidDataException)
+        {
+            return;
+        }
+        throw new InvalidOperationException(
+            "An inconsistent care refusal must still fail login restoration.");
+    }
+
+    private static DelegatingPetDurableCommandExecutor CreateCareExhaustedExecutor(
+        PetBootstrapSnapshot pet) => new()
+        {
+            Transition = envelope => PetDurableExecutionResult.Rejected(
+                new PetDurableReceipt(
+                    CommandFamily.PetPresenceTransition,
+                    PetDurableReceiptStatus.PetCareExhausted,
+                    envelope.Subject.AccountId,
+                    envelope.Subject.CharacterId,
+                    KitBagSlot: -1,
+                    EquipmentSlot: -1,
+                    PetId,
+                    PetLevel: pet.Level,
+                    PetExperience: pet.Experience,
+                    PetRevision: pet.Revision,
+                    IsCarried: true,
+                    IsSummoned: false,
+                    PresenceOperation: 2,
+                    AggregateRevision: pet.Revision,
+                    AuditReference: "login-pet-care-exhausted-check",
+                    OutboxEventId: null))
+        };
 
     private static async Task CheckLoginCallOutRetryIsIdempotentAsync()
     {

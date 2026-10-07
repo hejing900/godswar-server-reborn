@@ -39,6 +39,8 @@ internal sealed partial class GameClientHandler
             _character.KitBag,
             sourceSlot);
 
+        if (await TryOpenQuestScrollAsync(sourceSlot, cancellationToken)) return;
+
         if (packet.ClientOperationId is { } operationId)
         {
             if (itemId == PetItemCatalog.PackedSealJade)

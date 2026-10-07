@@ -26,6 +26,16 @@ OUTPUT = (r"D:\Godswar-Reborn-main\src\Godswar.Server\Infrastructure"
 # `word_digits` model pattern silently drops every NPC on those maps.
 MODEL_SUFFIX = re.compile(r"^(?P<key>.+)_(?P<model>[A-Za-z0-9]+)$")
 
+# Captured templates whose npc key is not the template minus its model segment.
+# The reference placed the actor that hands out the Marathon_All_006 quests with
+# the template `Marathon_006_AthenianWarrior1`, while Quest.xml, NpcName.dat and
+# npc_text_templates all call that npc `Marathon_All_006`. Deriving the key
+# mechanically would file the placement under `Marathon_006`, which nothing else
+# in the data uses, and the quest's own giver would resolve to no npc.
+NPC_KEY_OVERRIDE = {
+    "Marathon_006_AthenianWarrior1": "Marathon_All_006",
+}
+
 
 def captured_maps():
     found = {}
@@ -46,7 +56,8 @@ def captured_maps():
                 if match_model is None:
                     continue
                 rows.append((
-                    match_model.group("key"),
+                    NPC_KEY_OVERRIDE.get(
+                        template, match_model.group("key")),
                     template,
                     int(object_id),
                     int(low),

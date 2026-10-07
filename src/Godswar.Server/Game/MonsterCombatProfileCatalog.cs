@@ -163,9 +163,37 @@ internal sealed partial class MonsterCombatProfileCatalog
         // what it hits back with does not: the reference's level 141 spies in
         // Athens city take exactly one point off whatever character disturbs
         // them, so their attack stays at the one-damage floor.
-        return MonsterAggroPolicy.IsPassiveTemplate(monster.TemplateKey)
+        var resolved = MonsterAggroPolicy.IsPassiveTemplate(monster.TemplateKey)
             ? profile with { PhysicalAttack = 1, MagicAttack = 1 }
             : profile;
+
+        // The operator's GM overrides are the last word. They are applied here,
+        // after the formula, the database critical resistance and the passive
+        // clamp, because anything applied earlier would be silently replaced -
+        // a configured attack on a passive template is exactly the case that
+        // would otherwise look like "改了没反应".
+        if (MonsterOverridePolicy.TryResolveAttributes(
+                monster.MapId,
+                monster.ObjectId,
+                monster.TemplateKey,
+                out var overrides))
+        {
+            resolved = resolved with
+            {
+                Level = overrides.Level ?? resolved.Level,
+                PhysicalAttack = overrides.PhysicalAttack ?? resolved.PhysicalAttack,
+                MagicAttack = overrides.MagicAttack ?? resolved.MagicAttack,
+                PhysicalDefense = overrides.PhysicalDefense ?? resolved.PhysicalDefense,
+                MagicDefense = overrides.MagicDefense ?? resolved.MagicDefense,
+                Hit = overrides.Hit ?? resolved.Hit,
+                Dodge = overrides.Dodge ?? resolved.Dodge,
+                Critical = overrides.Critical ?? resolved.Critical,
+                CriticalResistance =
+                    overrides.CriticalResistance ?? resolved.CriticalResistance
+            };
+        }
+
+        return resolved;
     }
 
     internal static MonsterCombatProfile Resolve(

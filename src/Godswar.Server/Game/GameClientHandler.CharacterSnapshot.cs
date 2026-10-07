@@ -59,6 +59,11 @@ internal sealed partial class GameClientHandler
             _characterSnapshotBootstrapPending = hydrated is not null;
             if (hydrated is not null)
             {
+                // The per-day quest counters live in their own table, so they are
+                // read here - before any accept gate can be asked - rather than
+                // with the character row. This is what makes a restart not reset
+                // them: the gate reads what the last session wrote.
+                await LoadQuestDailyCompletionsAsync(cancellationToken);
                 _registry.UpdateActivePetHealingRuntime(
                     _session,
                     hydrated.Pets);

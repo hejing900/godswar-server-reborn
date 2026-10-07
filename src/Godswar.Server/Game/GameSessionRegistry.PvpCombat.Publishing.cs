@@ -27,6 +27,20 @@ internal sealed partial class GameSessionRegistry
             return;
         }
 
+        // Credit actual committed deaths, once outside the recipient loop.
+        // Basic attacks and immediate damage skills share this publisher.
+        var creditedVictims = new HashSet<int>();
+        async Task CreditAsync(GameSessionContext source, GameSessionContext victim)
+        {
+            if (source.RecordQuestPlayerKill is { } record &&
+                creditedVictims.Add(victim.CharacterId))
+                await record(victim, cancellationToken);
+        }
+        if (decision.TargetKilled) await CreditAsync(attacker, target);
+        if (decision.AttackerKilled) await CreditAsync(target, attacker);
+        foreach (var commit in decision.ElementalDamageCommits.Where(commit => commit.Killed))
+            await CreditAsync(commit.Source, commit.Target);
+
         var attackerWorldId = attacker.ObjectId;
         var targetWorldId = target.ObjectId;
         var selector = attacker.Character.Profession is 2 or 3

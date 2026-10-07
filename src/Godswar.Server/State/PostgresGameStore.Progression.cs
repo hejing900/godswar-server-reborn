@@ -195,10 +195,11 @@ internal sealed partial class PostgresGameStore
     public Task<QuestRewardItemGrantResult> GrantQuestRewardItemAsync(
         int accountId, int characterId, uint questId, int slotIndex,
         uint itemId, int quantity, ItemGrantAttributes attributes,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        Guid rewardClaimId = default) =>
         _monsterRewardExtras.GrantQuestRewardItemAsync(accountId, characterId,
             questId, slotIndex, itemId, quantity, attributes,
-            cancellationToken);
+            cancellationToken, rewardClaimId);
 
     public Task<PetMonsterExperienceResult> ApplyPetMonsterKillExperienceAsync(
         int accountId, int characterId, Guid deathEventId, int experience,

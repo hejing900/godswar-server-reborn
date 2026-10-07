@@ -247,7 +247,7 @@ internal sealed partial class PostgresGameStore
         int progressOrdinal)
     {
         var questIds = reader.GetFieldValue<int[]>(questIdOrdinal);
-        var progresses = reader.GetFieldValue<int[]>(progressOrdinal);
+        var progresses = reader.GetFieldValue<long[]>(progressOrdinal);
         var quests = new List<CharacterQuest>(questIds.Length);
         for (var index = 0; index < questIds.Length; index++)
         {

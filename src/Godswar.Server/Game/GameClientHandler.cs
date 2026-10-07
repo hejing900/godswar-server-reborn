@@ -144,7 +144,9 @@ internal sealed partial class GameClientHandler : IClientHandler
                         _session.IsSecure ? "tls" : "raw_tcp");
                     try
                     {
+                        await DrainQuestPlayerDeathsAsync(cancellationToken);
                         await HandlePacketAsync(packet, cancellationToken);
+                        await DrainQuestPlayerDeathsAsync(cancellationToken);
                         activity.Complete(
                             ServerTraceOutcome.Accepted);
                     }

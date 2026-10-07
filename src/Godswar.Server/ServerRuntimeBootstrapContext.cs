@@ -87,10 +87,26 @@ internal sealed class ServerRuntimeBootstrapContext
             PostgresQuestRewardContentSnapshotReader.LoadAsync(
                 options.Storage.PostgresConnectionString,
                 cancellationToken);
+        var monsterOverrides = await
+            PostgresMonsterOverrideSnapshotReader.LoadAsync(
+                options.Storage.PostgresConnectionString,
+                cancellationToken);
+        var gmNpcs = await PostgresGmNpcSnapshotReader.LoadAsync(
+            options.Storage.PostgresConnectionString,
+            cancellationToken);
         MedusaRewardPolicyCatalog.Install(medusaRewards);
         MedusaMonsterContentCatalog.Install(medusaMonsters);
         MonsterLootContentCatalog.Install(monsterLoot);
         QuestRewardContentCatalog.Install(questRewards);
+        MonsterOverrideCatalog.Install(monsterOverrides);
+        GmNpcOverrideCatalog.Install(gmNpcs);
+        Console.WriteLine(
+            $"[monster-overrides] loaded GM spawns={monsterOverrides.Spawns.Count} " +
+            $"edits={monsterOverrides.Edits.Count} " +
+            $"template-attributes={monsterOverrides.TemplateAttributes.Count}");
+        Console.WriteLine(
+            $"[gm-npc] loaded GM placements={gmNpcs.Spawns.Count} " +
+            $"dialogues={gmNpcs.Dialogues.Count}");
         return new(
             options,
             world,

@@ -217,7 +217,32 @@ internal sealed partial class GameClientHandler
                 cancellationToken);
             var refreshed = _characterLoadSnapshot?.Pets.SingleOrDefault(
                 candidate => candidate.PetId == carried.PetId);
-            if (receipt is not
+            if (receipt is
+                    {
+                        Status: PetDurableReceiptStatus.PetCareExhausted,
+                        IsCarried: true,
+                        IsSummoned: false
+                    } &&
+                refreshed is
+                    {
+                        IsCarried: true,
+                        IsSummoned: false,
+                        ContributesToCharacter: false
+                    } &&
+                !PetCareDecayPolicy.CanBeSummoned(
+                    refreshed.Satiety,
+                    refreshed.RemainingLifetime))
+            {
+                // An exhausted pet is a valid recalled selection. The durable
+                // command already published Call Out failure; restore Take
+                // below and allow the rest of the login bootstrap to finish.
+                carried = refreshed;
+                Console.WriteLine(
+                    $"[pet] login call-out skipped character={_character.Name} " +
+                    $"pet={petId} reason=care_exhausted " +
+                    $"satiety={carried.Satiety} lifetime={carried.RemainingLifetime}");
+            }
+            else if (receipt is not
                     {
                         Succeeded: true,
                         IsCarried: true,
@@ -233,8 +258,11 @@ internal sealed partial class GameClientHandler
                     "The carried pet could not be called out during login.");
             }
 
-            carried = refreshed;
-            callOutResultAlreadySent = true;
+            else
+            {
+                carried = refreshed;
+                callOutResultAlreadySent = true;
+            }
         }
         if (carried.IsSummoned)
         {

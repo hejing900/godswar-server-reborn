@@ -31,7 +31,7 @@ internal static partial class Program
             []);
     }
 
-    private static CapturedMonsterSpawn CreateCapturedMonster(
+    internal static CapturedMonsterSpawn CreateCapturedMonster(
         uint objectId,
         float x,
         float z,

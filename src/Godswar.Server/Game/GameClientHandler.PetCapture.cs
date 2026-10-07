@@ -33,6 +33,8 @@ internal sealed partial class GameClientHandler
         CancellationToken cancellationToken)
     {
         var character = _character;
+        if (PetCaptureRequest.TryRead(packet, out var questCapture) &&
+            await TryHandleQuestCaptureAsync(questCapture, cancellationToken)) return;
         if (!PetCaptureRequest.TryRead(packet, out var request) ||
             _account is null ||
             character is null ||

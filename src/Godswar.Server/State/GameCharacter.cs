@@ -125,6 +125,52 @@ internal sealed class GameCharacter
     /// <summary>Quests the character has already handed in.</summary>
     public uint[] QuestCompletedIds { get; set; } = [];
 
+    /// <summary>
+    /// How often each repeatable quest has been completed in the current quest
+    /// day, keyed by quest id.
+    /// </summary>
+    /// <remarks>
+    /// The per-day cap lives here: a daily or guild row allows one completion a
+    /// day and a repeat row three, and the main line is capped by its own
+    /// completion record instead. The day itself rolls over at 12:00 server time
+    /// - see <see cref="QuestDailyState"/> - so an entry stamped with another day
+    /// reads back as zero. Kept in memory for the gate and written back through
+    /// <c>character_quest_daily</c>, which is what makes a restart not reset it.
+    /// </remarks>
+    public Dictionary<uint, QuestDailyCount> QuestDailyCompletions { get; set; } = [];
+
+    /// <summary>One repeatable quest's completion count and the day it is for.</summary>
+    public readonly record struct QuestDailyCount(DateOnly Day, int Completions)
+    {
+        /// <summary>The completions that count towards <paramref name="today"/>.</summary>
+        public int CompletedOn(DateOnly today) =>
+            QuestDailyState.CompletionsToday(Day, Completions, today);
+    }
+
+    /// <summary>
+    /// How often <paramref name="questId"/> has been completed in the quest day
+    /// <paramref name="today"/>.
+    /// </summary>
+    public int QuestCompletionsOn(uint questId, DateOnly today) =>
+        QuestDailyCompletions.TryGetValue(questId, out var count)
+            ? count.CompletedOn(today)
+            : 0;
+
+    /// <summary>
+    /// Records one more completion of <paramref name="questId"/> inside
+    /// <paramref name="today"/>.
+    /// </summary>
+    /// <remarks>
+    /// A stamp from an earlier day does not carry over: it restarts at one, which
+    /// is the same thing the database upsert does.
+    /// </remarks>
+    public int RecordQuestCompletion(uint questId, DateOnly today)
+    {
+        var completed = QuestCompletionsOn(questId, today) + 1;
+        QuestDailyCompletions[questId] = new QuestDailyCount(today, completed);
+        return completed;
+    }
+
     public long MedusaRewardRevision { get; set; }
 
     public uint SelectedTitleId { get; set; }

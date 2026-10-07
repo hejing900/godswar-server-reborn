@@ -13,7 +13,7 @@ internal sealed class CharacterQuest
     public required uint QuestId { get; init; }
 
     /// <summary>Objective entries satisfied so far.</summary>
-    public int Progress { get; set; }
+    public long Progress { get; set; }
 
     public CharacterQuest Clone() => new()
     {

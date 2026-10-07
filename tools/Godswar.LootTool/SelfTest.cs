@@ -396,6 +396,14 @@ internal static class SelfTest
 
         failures += await CheckQuestRewardAsync(settings, items, Line);
 
+        failures += await CheckCharacterAndWaypointsAsync(settings, Line);
+
+        failures += await CheckMonsterOverridesAsync(settings, Line);
+
+        failures += await CheckExportImportAsync(settings, Line);
+
+        failures += await CheckNpcDialogueAsync(settings, Line);
+
         failures += CheckQuestCatalogue(settings, Line);
 
         Line();
@@ -707,6 +715,1061 @@ internal static class SelfTest
             {
                 line("[警告] 属性中文名一条都没读到（" + attributes.ClientTextPath +
                      "），下拉里只能显示英文标签。");
+            }
+        }
+
+        return failures;
+    }
+
+    /// <summary>
+    /// 「角色与标记点」页的数据层：按名字查角色（含地图/坐标）、地图选择表，
+    /// 以及标记点表的增/查/挪/改名/删一整个回环。
+    /// </summary>
+    /// <remarks>
+    /// 回环用带时间戳的探针名字，跑完自己删掉，绝不碰操作者存的标记点；
+    /// 表不存在（旧库还没跑迁移）时按「跳过」处理，和任务奖励页一个规矩。
+    /// </remarks>
+    private static async Task<int> CheckCharacterAndWaypointsAsync(
+        LootToolSettings settings,
+        Action<string> line)
+    {
+        var failures = 0;
+        line(string.Empty);
+        line("── 角色与标记点（本次新增） ────────────────────");
+
+        await using var store = new CharacterStore();
+        try
+        {
+            store.Connect(settings.BuildConnectionString());
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] 角色页无法连接数据库：{ex.Message}");
+            return 1;
+        }
+
+        List<MapChoice> maps;
+        try
+        {
+            maps = await store.LoadMapChoicesAsync();
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] 读取 map_templates 失败：{ex.Message}");
+            return failures + 1;
+        }
+        if (maps.Count == 0)
+        {
+            line("[失败] map_templates 是空的，地图选择器没有内容。");
+            failures++;
+        }
+        else
+        {
+            line($"[通过] 地图表 {maps.Count} 张（例：{maps[0]}）。");
+        }
+
+        List<CharacterRow> characters;
+        try
+        {
+            characters = await store.SearchCharactersAsync(null);
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] 按名字查角色失败：{ex.Message}");
+            return failures + 1;
+        }
+
+        var located = characters.Count(c => maps.Any(m => m.MapId == c.MapId));
+        line($"[信息] 角色 {characters.Count} 个，其中地图能在 map_templates 里对上的 {located} 个。");
+        foreach (var character in characters.Take(5))
+        {
+            line($"  {character.Name,-16} {character.ProfessionName} {character.Level,3} 级 " +
+                 $"{character.CampName} map{character.MapId} {character.PositionText}");
+        }
+
+        if (!await store.HasWaypointSchemaAsync())
+        {
+            line($"[跳过] {CharacterStore.MissingSchemaMessage(store.DatabaseName)}");
+            return failures;
+        }
+
+        line("[通过] 标记点 schema 存在（gm_waypoints）。");
+
+        List<WaypointRow> existing;
+        try
+        {
+            existing = await store.LoadWaypointsAsync();
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] 读取 gm_waypoints 失败：{ex.Message}");
+            return failures + 1;
+        }
+
+        line(existing.Count == 0
+            ? "[信息] 当前没有任何标记点。"
+            : $"[信息] 已有标记点 {existing.Count} 个：" +
+              string.Join("、", existing.Take(8).Select(static w => $"{w.Name}(map{w.MapId})")));
+
+        // 探针名字带时间戳，绝不会和操作者的命名撞车。
+        var stamp = DateTime.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        var probeName = $"__selftest__{stamp}";
+        var renamedName = $"{probeName}_r";
+        var probeMap = maps.Count > 0 ? maps[0].MapId : (short)0;
+        long probeId = 0;
+        try
+        {
+            var saved = await store.SaveWaypointAsync(new WaypointInput(
+                probeName, "自检探针", "selftest", probeMap, -196f, 44f, 1.5f, "manual", "selftest"));
+            probeId = saved.Id;
+            if (saved.Name != probeName ||
+                Math.Abs(saved.X - (-196f)) > 0.001f ||
+                Math.Abs(saved.Z - 44f) > 0.001f ||
+                saved.MapId != probeMap)
+            {
+                line($"[失败] 标记点写入后读回的值不一致：{saved.Name} map{saved.MapId} {saved.PositionText}");
+                failures++;
+            }
+            else
+            {
+                line($"[通过] 新增标记点 → id={saved.Id} map{saved.MapId} {saved.PositionText}。");
+            }
+
+            var afterSave = await store.LoadWaypointsAsync();
+            if (afterSave.Count != existing.Count + 1 ||
+                afterSave.All(w => w.Name != probeName))
+            {
+                line("[失败] 新增后列表没有多出这一行。");
+                failures++;
+            }
+            else
+            {
+                line("[通过] 列表里能查到新标记点。");
+            }
+
+            var moved = await store.MoveWaypointAsync(
+                probeId, probeMap, 180f, 150f, 3f, "selftest");
+            if (Math.Abs(moved.X - 180f) > 0.001f || Math.Abs(moved.Z - 150f) > 0.001f)
+            {
+                line($"[失败] 挪位后坐标不对：{moved.PositionText}");
+                failures++;
+            }
+            else
+            {
+                line($"[通过] 覆盖坐标 → {moved.PositionText}。");
+            }
+
+            await store.RenameWaypointAsync(probeId, renamedName, "自检探针改名", "selftest");
+            var afterRename = await store.LoadWaypointsAsync();
+            if (afterRename.All(w => w.Name != renamedName))
+            {
+                line("[失败] 改名后找不到新名字。");
+                failures++;
+            }
+            else
+            {
+                line($"[通过] 改名 → {renamedName}。");
+            }
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] 标记点回环抛异常：{ex.Message}");
+            failures++;
+        }
+        finally
+        {
+            if (probeId != 0)
+            {
+                try
+                {
+                    await store.DeleteWaypointAsync(probeId);
+                    var afterDelete = await store.LoadWaypointsAsync();
+                    if (afterDelete.Any(w => w.Id == probeId))
+                    {
+                        line("[失败] 探针标记点没删掉。");
+                        failures++;
+                    }
+                    else
+                    {
+                        line("[通过] 删除探针标记点，列表恢复原样。");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    line($"[失败] 删除探针标记点失败：{ex.Message}");
+                    failures++;
+                }
+            }
+        }
+
+        return failures;
+    }
+
+    /// <summary>
+    /// 「刷怪」页的数据层：可选模板（该图已发布的怪）、GM 刷怪点的增/查/启停/删，
+    /// 以及按模板属性覆盖的写入与清除。
+    /// </summary>
+    /// <remarks>
+    /// 回环挑该图**真实存在**的模板当底稿，写完自己删干净；表不存在（旧库还没跑迁移）
+    /// 时按「跳过」处理。
+    /// </remarks>
+    private static async Task<int> CheckMonsterOverridesAsync(
+        LootToolSettings settings,
+        Action<string> line)
+    {
+        var failures = 0;
+        line(string.Empty);
+        line("── 刷怪（本次新增） ────────────────────────────");
+
+        await using var store = new MonsterStore();
+        try
+        {
+            store.Connect(settings.BuildConnectionString());
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] 刷怪页无法连接数据库：{ex.Message}");
+            return 1;
+        }
+
+        if (!await store.HasOverrideSchemaAsync())
+        {
+            line($"[跳过] {MonsterStore.MissingSchemaMessage(store.DatabaseName)}");
+            return 0;
+        }
+
+        line("[通过] 刷怪 schema 存在（gm_monster_spawns + edits + attributes）。");
+
+        var maps = await store.LoadMapsAsync();
+        short probeMap = 0;
+        List<MonsterTemplateChoice> templates = [];
+        foreach (var map in maps)
+        {
+            var candidates = await store.LoadTemplatesAsync(map.MapId);
+            if (candidates.Count > 0)
+            {
+                probeMap = map.MapId;
+                templates = candidates;
+                break;
+            }
+        }
+
+        if (templates.Count == 0)
+        {
+            line("[失败] 没有任何地图能列出可选怪物模板。");
+            return failures + 1;
+        }
+
+        var template = templates[0];
+        line($"[信息] 底稿地图 map{probeMap}｜可选模板 {templates.Count} 个，" +
+             $"例如 {template.TemplateKey}（该图已有点 {template.SpawnCount} 个，" +
+             $"对象 {template.SampleObjectId}）。");
+
+        var existing = await store.LoadSpawnRowsAsync(probeMap);
+        var existingAttributes = await store.LoadTemplateAttributesAsync(probeMap);
+        line($"[信息] 该图现有 GM 刷怪点 {existing.Count} 个，模板属性覆盖 {existingAttributes.Count} 条。");
+
+        var stamp = DateTime.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        var prefix = $"__selftest__{stamp}";
+        var created = new List<GmMonsterSpawnRow>();
+        var wroteAttributes = false;
+        try
+        {
+            created = await store.CreateSpawnsAsync(new SpawnBatchRequest(
+                MapId: probeMap,
+                WaypointId: null,
+                NamePrefix: prefix,
+                TemplateKey: template.TemplateKey,
+                DisplayName: template.DisplayName,
+                Count: 2,
+                X: template.SampleX + 5f,
+                Z: template.SampleZ + 5f,
+                Spread: 3f,
+                Facing: 1.5f,
+                Level: 7,
+                CurrentHealth: null,
+                MaximumHealth: 321,
+                Attributes: new MonsterAttributeValues(PhysicalAttack: 12, Hit: 34),
+                UpdatedBy: "selftest"));
+
+            if (created.Count != 2)
+            {
+                line($"[失败] 期望生成 2 个点，实际 {created.Count} 个。");
+                failures++;
+            }
+            else
+            {
+                line($"[通过] 生成 2 个点：{string.Join("、", created.Select(static row => $"id={row.ObjectId}"))}。");
+            }
+
+            foreach (var row in created)
+            {
+                if (row.ObjectId < MonsterStore.FirstGmObjectId ||
+                    row.ObjectId > MonsterStore.LastGmObjectId)
+                {
+                    line($"[失败] 对象 ID {row.ObjectId} 落在 GM 段之外。");
+                    failures++;
+                }
+            }
+
+            var after = await store.LoadSpawnRowsAsync(probeMap);
+            if (after.Count != existing.Count + created.Count)
+            {
+                line($"[失败] 生成后列表数量不对：期望 {existing.Count + created.Count}，实际 {after.Count}。");
+                failures++;
+            }
+            else
+            {
+                line("[通过] 列表里能查到新生成的点。");
+            }
+
+            if (created.Count > 0)
+            {
+                await store.SetSpawnEnabledAsync(created[0].Id, false, "selftest");
+                var toggled = await store.LoadSpawnRowsAsync(probeMap);
+                var target = toggled.FirstOrDefault(row => row.Id == created[0].Id);
+                if (target is null || target.Enabled)
+                {
+                    line("[失败] 停用没有生效。");
+                    failures++;
+                }
+                else
+                {
+                    line("[通过] 停用刷怪点生效。");
+                }
+            }
+
+            await store.SaveTemplateAttributesAsync(
+                probeMap,
+                template.TemplateKey,
+                template.DisplayName,
+                new MonsterAttributeValues(PhysicalAttack: 999, CriticalResistance: 55),
+                "selftest");
+            wroteAttributes = true;
+            var attributes = await store.LoadTemplateAttributesAsync(probeMap);
+            var saved = attributes.FirstOrDefault(row => row.TemplateKey == template.TemplateKey);
+            if (saved is null || saved.Values.PhysicalAttack != 999)
+            {
+                line("[失败] 模板属性覆盖没有写进去。");
+                failures++;
+            }
+            else
+            {
+                line($"[通过] 模板属性覆盖 → {saved.Summary}。");
+            }
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] 刷怪回环抛异常：{ex.Message}");
+            failures++;
+        }
+        finally
+        {
+            foreach (var row in created)
+            {
+                try
+                {
+                    await store.DeleteSpawnAsync(row.Id);
+                }
+                catch (Exception ex)
+                {
+                    line($"[失败] 清理探针刷怪点失败：{ex.Message}");
+                    failures++;
+                }
+            }
+
+            if (wroteAttributes)
+            {
+                try
+                {
+                    await store.SaveTemplateAttributesAsync(
+                        probeMap,
+                        template.TemplateKey,
+                        template.DisplayName,
+                        new MonsterAttributeValues(),
+                        "selftest");
+                }
+                catch (Exception ex)
+                {
+                    line($"[失败] 清理探针属性覆盖失败：{ex.Message}");
+                    failures++;
+                }
+            }
+
+            var final = await store.LoadSpawnRowsAsync(probeMap);
+            var finalAttributes = await store.LoadTemplateAttributesAsync(probeMap);
+            if (final.Count == existing.Count && finalAttributes.Count == existingAttributes.Count)
+            {
+                line("[通过] 清理完成，刷怪点与属性覆盖都恢复原样。");
+            }
+            else
+            {
+                line($"[失败] 清理不干净：刷怪点 {existing.Count}→{final.Count}，" +
+                     $"属性覆盖 {existingAttributes.Count}→{finalAttributes.Count}。");
+                failures++;
+            }
+        }
+
+        return failures;
+    }
+
+    /// <summary>
+    /// 「导出/导入」页的数据层：整体导出的条数与库一致、JSON 往返不丢字段，
+    /// 以及导入是**幂等**的（同一份文件导两次结果一样）。
+    /// </summary>
+    /// <remarks>
+    /// 导入只喂一个**探针专用**的小 bundle（不是整库导出），所以不会碰操作者已有的行：
+    /// 探针的标记点/刷怪点/属性都是自检自己造的，跑完自己删干净并核对数量回到原样。
+    /// </remarks>
+    private static async Task<int> CheckExportImportAsync(
+        LootToolSettings settings,
+        Action<string> line)
+    {
+        var failures = 0;
+        line(string.Empty);
+        line("── 导出/导入（本次新增） ──────────────────────");
+
+        await using var content = new GmContentStore();
+        await using var monsters = new MonsterStore();
+        try
+        {
+            content.Connect(settings.BuildConnectionString());
+            monsters.Connect(settings.BuildConnectionString());
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] 导出页无法连接数据库：{ex.Message}");
+            return 1;
+        }
+
+        if (!await monsters.HasOverrideSchemaAsync())
+        {
+            line($"[跳过] {MonsterStore.MissingSchemaMessage(content.DatabaseName)}");
+            return 0;
+        }
+
+        var bundle = await content.ExportAsync();
+        line($"[信息] 整体导出：{bundle.Summary}（库 {bundle.Database}，版本 {bundle.Version}）。");
+
+        var json = GmContentStore.Serialize(bundle);
+        var restored = GmContentStore.Deserialize(json);
+        if (restored.Waypoints.Count != bundle.Waypoints.Count ||
+            restored.Spawns.Count != bundle.Spawns.Count ||
+            restored.SpawnAttributes.Count != bundle.SpawnAttributes.Count ||
+            restored.TemplateAttributes.Count != bundle.TemplateAttributes.Count)
+        {
+            line("[失败] JSON 往返后条数不一致。");
+            failures++;
+        }
+        else
+        {
+            line($"[通过] JSON 往返不丢条目（{json.Length} 字符）。");
+        }
+
+        if (bundle.Spawns.Count > 0)
+        {
+            var original = bundle.Spawns[0];
+            var packet = Convert.FromBase64String(original.ClearBytesBase64);
+            var roundTripped = restored.Spawns[0];
+            if (packet.Length != Convert.FromBase64String(roundTripped.ClearBytesBase64).Length ||
+                roundTripped.ObjectId != original.ObjectId ||
+                roundTripped.TemplateKey != original.TemplateKey)
+            {
+                line("[失败] JSON 往返后包体或关键字丢了。");
+                failures++;
+            }
+            else
+            {
+                line($"[通过] 包体 base64 往返完好（{packet.Length} 字节）。");
+            }
+        }
+
+        // 找一张能列模板的图，用来造探针刷怪点。
+        short probeMap = 0;
+        MonsterTemplateChoice? template = null;
+        foreach (var map in await monsters.LoadMapsAsync())
+        {
+            var candidates = await monsters.LoadTemplatesAsync(map.MapId);
+            if (candidates.Count > 0)
+            {
+                probeMap = map.MapId;
+                template = candidates[0];
+                break;
+            }
+        }
+
+        if (template is null)
+        {
+            line("[失败] 没有任何地图能列出可选怪物模板，探针造不出来。");
+            return failures + 1;
+        }
+
+        var stamp = DateTime.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        var waypointName = $"__selftest_export__{stamp}";
+        var spawnName = $"__selftest_export__{stamp}";
+        var before = await monsters.LoadSpawnRowsAsync(probeMap);
+        var beforeAttributes = await monsters.LoadTemplateAttributesAsync(probeMap);
+        var probeSpawnId = 0L;
+
+        try
+        {
+            var created = await monsters.CreateSpawnsAsync(new SpawnBatchRequest(
+                MapId: probeMap,
+                WaypointId: null,
+                NamePrefix: $"__selftest_export__{stamp}",
+                TemplateKey: template.TemplateKey,
+                DisplayName: template.DisplayName,
+                Count: 1,
+                X: template.SampleX + 9f,
+                Z: template.SampleZ + 9f,
+                Spread: 0f,
+                Facing: 0f,
+                Level: null,
+                CurrentHealth: null,
+                MaximumHealth: null,
+                Attributes: null,
+                UpdatedBy: "selftest"));
+            if (created.Count != 1)
+            {
+                line($"[失败] 探针刷怪点没造出来（{created.Count} 个）。");
+                return failures + 1;
+            }
+
+            spawnName = created[0].Name;
+            probeSpawnId = created[0].Id;
+
+            // 只导出这一条刷怪点，绝不把整库内容喂回导入。
+            var probePacket = (await content.ExportAsync()).Spawns
+                .FirstOrDefault(row => row.ObjectId == created[0].ObjectId)
+                ?? throw new InvalidOperationException("刚写的探针刷怪点没被导出到。");
+            var probe = new GmContentBundle(
+                GmContentBundle.CurrentVersion,
+                DateTime.UtcNow,
+                content.DatabaseName,
+                Waypoints:
+                [
+                    new GmWaypointEntry(
+                        waypointName,
+                        "自检导入探针",
+                        "selftest",
+                        probeMap,
+                        template.SampleX + 9f,
+                        template.SampleZ + 9f,
+                        0f,
+                        "manual")
+                ],
+                Spawns: [probePacket with { Name = spawnName, WaypointName = waypointName }],
+                SpawnAttributes:
+                [
+                    new GmSpawnAttributeEntry(
+                        probeMap,
+                        created[0].ObjectId,
+                        PhysicalAttack: 41,
+                        MagicAttack: null,
+                        PhysicalDefense: null,
+                        MagicDefense: null,
+                        Hit: null,
+                        Dodge: null,
+                        Critical: null,
+                        CriticalResistance: null)
+                ],
+                TemplateAttributes:
+                [
+                    new GmTemplateAttributeEntry(
+                        probeMap,
+                        template.TemplateKey,
+                        template.DisplayName,
+                        Level: null,
+                        CurrentHealth: null,
+                        MaximumHealth: null,
+                        PhysicalAttack: 42,
+                        MagicAttack: null,
+                        PhysicalDefense: null,
+                        MagicDefense: null,
+                        Hit: null,
+                        Dodge: null,
+                        Critical: null,
+                        CriticalResistance: null)
+                ]);
+
+            var first = await content.ImportAsync(probe, "selftest");
+            line($"[通过] 导入一次：{first.Summary}");
+
+            var afterFirst = await monsters.LoadSpawnRowsAsync(probeMap);
+            var attributesFirst = await monsters.LoadTemplateAttributesAsync(probeMap);
+            var waypoints = await content.ExportAsync();
+            if (!waypoints.Waypoints.Any(row => row.Name == waypointName))
+            {
+                line("[失败] 导入没有写进标记点。");
+                failures++;
+            }
+            else
+            {
+                line("[通过] 导入写进了标记点。");
+            }
+
+            if (!attributesFirst.Any(row =>
+                    row.TemplateKey == template.TemplateKey &&
+                    row.Values.PhysicalAttack == 42))
+            {
+                line("[失败] 导入没有写进模板属性覆盖。");
+                failures++;
+            }
+            else
+            {
+                line("[通过] 导入写进了模板属性覆盖（物攻=42）。");
+            }
+
+            var second = await content.ImportAsync(probe, "selftest");
+            var afterSecond = await monsters.LoadSpawnRowsAsync(probeMap);
+            var attributesSecond = await monsters.LoadTemplateAttributesAsync(probeMap);
+            if (afterSecond.Count != afterFirst.Count ||
+                attributesSecond.Count != attributesFirst.Count ||
+                second.Spawns != first.Spawns)
+            {
+                line($"[失败] 导入不幂等：刷怪点 {afterFirst.Count}→{afterSecond.Count}，" +
+                     $"属性覆盖 {attributesFirst.Count}→{attributesSecond.Count}。");
+                failures++;
+            }
+            else
+            {
+                line("[通过] 同一份文件导两次结果一样（按名字/键覆盖）。");
+            }
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] 导出/导入回环抛异常：{ex.Message}");
+            failures++;
+        }
+        finally
+        {
+            try
+            {
+                if (probeSpawnId != 0)
+                {
+                    await monsters.DeleteSpawnAsync(probeSpawnId);
+                }
+
+                await monsters.SaveTemplateAttributesAsync(
+                    probeMap,
+                    template.TemplateKey,
+                    template.DisplayName,
+                    new MonsterAttributeValues(),
+                    "selftest");
+                await DeleteWaypointAsync(settings, waypointName);
+            }
+            catch (Exception ex)
+            {
+                line($"[失败] 清理探针失败：{ex.Message}");
+                failures++;
+            }
+
+            var final = await monsters.LoadSpawnRowsAsync(probeMap);
+            var finalAttributes = await monsters.LoadTemplateAttributesAsync(probeMap);
+            var finalWaypoints = await content.ExportAsync();
+            if (final.Count == before.Count &&
+                finalAttributes.Count == beforeAttributes.Count &&
+                finalWaypoints.Waypoints.All(row => row.Name != waypointName))
+            {
+                line("[通过] 清理完成，刷怪点/属性覆盖/标记点都恢复原样。");
+            }
+            else
+            {
+                line($"[失败] 清理不干净：刷怪点 {before.Count}→{final.Count}，" +
+                     $"属性覆盖 {beforeAttributes.Count}→{finalAttributes.Count}。");
+                failures++;
+            }
+        }
+
+        return failures;
+    }
+
+    /// <summary>删掉一个自检标记点（<c>GmContentStore</c> 只做整份导入，没有单删）。</summary>
+    private static async Task DeleteWaypointAsync(LootToolSettings settings, string name)
+    {
+        // 借「角色与标记点」那条已验证的单删路径，而不是往 GmContentStore 里加"单删"：
+        // 导出页不需要它，加进去只会是死代码。
+        await using var store = new CharacterStore();
+        store.Connect(settings.BuildConnectionString());
+        var existing = await store.LoadWaypointsAsync();
+        var target = existing.FirstOrDefault(row => row.Name == name);
+        if (target is not null)
+        {
+            await store.DeleteWaypointAsync(target.Id);
+        }
+    }
+
+    /// <summary>
+    /// 「NPC 对话」页的数据层与**客户端补丁生成**：校验规则、生成出来的 Lua 结构，
+    /// 以及在客户端目录上的幂等性（第二次跑什么都不改）。
+    /// </summary>
+    /// <remarks>
+    /// 补丁只往**临时目录**里那份真实客户端文件的副本上打，绝不碰游戏客户端本体。
+    /// 生成结果同时留一份到 <c>logs\npc-patch-preview.lua</c>，方便用真 Lua 解释器过语法。
+    /// </remarks>
+    private static async Task<int> CheckNpcDialogueAsync(
+        LootToolSettings settings,
+        Action<string> line)
+    {
+        var failures = 0;
+        line(string.Empty);
+        line("── NPC 对话与客户端补丁（本次新增） ────────────");
+
+        await using var store = new NpcDialogueStore();
+        try
+        {
+            store.Connect(settings.BuildConnectionString());
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] NPC 页无法连接数据库：{ex.Message}");
+            return 1;
+        }
+
+        if (!await store.HasSchemaAsync())
+        {
+            line($"[跳过] {NpcDialogueStore.MissingSchemaMessage(store.DatabaseName)}");
+            return 0;
+        }
+
+        line("[通过] NPC schema 存在（dialogues / pages / buttons / spawns）。");
+
+        var stamp = DateTime.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        var key = $"__selftest_npc__{stamp}";
+        var tree = new GmNpcTree(
+            new GmNpcDialogue(key, "自检对话", NpcDialogueStore.DefaultFunctionFlag, 90001, "", true),
+            Pages:
+            [
+                new GmNpcDialoguePage(key, 90001, "第一页：选一个\"选项\"。", ""),
+                new GmNpcDialoguePage(key, 90002, "第二页：到此为止。", "")
+            ],
+            Buttons:
+            [
+                new GmNpcDialogueButton(key, 90001, 1, "去第二页", 90002),
+                new GmNpcDialogueButton(key, 90001, 2, "什么都不做", 0)
+            ]);
+
+        var created = false;
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"gm-npc-patch-{stamp}");
+        try
+        {
+            // 校验必须是"该拒的拒"。
+            var badCases = new (string Name, GmNpcTree Tree)[]
+            {
+                ("入口页不存在", tree with
+                {
+                    Dialogue = tree.Dialogue with { EntryPage = 90099 }
+                }),
+                ("按钮槽位越界", tree with
+                {
+                    Buttons = [new GmNpcDialogueButton(key, 90001, 13, "第13个", 90002)]
+                }),
+                ("按钮指向不存在的页", tree with
+                {
+                    Buttons = [new GmNpcDialogueButton(key, 90001, 1, "去不存在的页", 90088)]
+                }),
+                ("有页从入口走不到", tree with
+                {
+                    Pages =
+                    [
+                        new GmNpcDialoguePage(key, 90001, "第一页", ""),
+                        new GmNpcDialoguePage(key, 90002, "第二页", ""),
+                        new GmNpcDialoguePage(key, 90003, "孤岛页", "")
+                    ]
+                }),
+                ("按钮没有文字", tree with
+                {
+                    Buttons = [new GmNpcDialogueButton(key, 90001, 1, " ", 90002)]
+                })
+            };
+            var rejected = 0;
+            foreach (var (name, bad) in badCases)
+            {
+                try
+                {
+                    NpcDialogueStore.Validate(bad);
+                }
+                catch (InvalidDataException)
+                {
+                    rejected++;
+                }
+                catch (InvalidOperationException)
+                {
+                    rejected++;
+                }
+            }
+
+            if (rejected == badCases.Length)
+            {
+                line($"[通过] 校验挡住了全部 {rejected} 种非法配置（入口缺失/槽位越界/指向空页/不可达页/空按钮文字）。");
+            }
+            else
+            {
+                line($"[失败] 校验只挡住了 {rejected}/{badCases.Length} 种非法配置。");
+                failures++;
+            }
+
+            NpcDialogueStore.Validate(tree);
+            line("[通过] 合法配置通过校验。");
+
+            await store.SaveTreeAsync(tree, "selftest");
+            created = true;
+            var reloaded = await store.LoadTreesAsync();
+            var saved = reloaded.FirstOrDefault(row => row.Dialogue.DialogueKey == key);
+            if (saved is null || saved.Pages.Count != 2 || saved.Buttons.Count != 2)
+            {
+                line($"[失败] 存回来的树不对：找到 {saved?.Pages.Count} 页 / {saved?.Buttons.Count} 按钮。");
+                failures++;
+            }
+            else
+            {
+                line("[通过] 存库并读回：2 页、2 按钮。");
+            }
+
+            var lua = ClientNpcPatch.GenerateLua([tree]);
+            var previewPath = Path.Combine(
+                AppContext.BaseDirectory,
+                "logs",
+                "npc-patch-preview.lua");
+            Directory.CreateDirectory(Path.GetDirectoryName(previewPath)!);
+            File.WriteAllText(previewPath, lua, new UTF8Encoding(false));
+
+            var expected = new (string Snippet, string Why)[]
+            {
+                ($"NPC_FLAG_SYS_GMTOOL = {NpcDialogueStore.DefaultFunctionFlag}", "功能号声明"),
+                ("function NpcFunGMTOOL_SetText(Type,Index,BtnID,SubID)", "分派入口"),
+                ("Index == 90001", "第一页"),
+                ("Index == 90002", "第二页"),
+                ($"SubID == {NpcDialogueStore.BodySubId(90001)}", "第一页正文条目"),
+                ($"SubID == {NpcDialogueStore.ButtonSubId(90001, 1)}", "第一页 1 号按钮"),
+                ($"SubID == {NpcDialogueStore.ButtonSubId(90001, 2)}", "第一页 2 号按钮"),
+                ("FirstWin_Text1:SetText(\"第一页：选一个\\\"选项\\\"。\")", "正文里的引号被转义"),
+                ("Button:SetText(\"去第二页\")", "按钮文字"),
+                ("Button:SetPosition(25,135)", "第一个按钮的位置"),
+                ("Button:SetPosition(25,155)", "第二个按钮的位置"),
+                ("NPCFUN:EndMessage(true)", "终点页自己收尾")
+            };
+            var missing = expected
+                .Where(row => !lua.Contains(row.Snippet, StringComparison.Ordinal))
+                .ToList();
+            if (missing.Count == 0)
+            {
+                line($"[通过] 生成的 Lua 含全部 {expected.Length} 个结构要点。");
+            }
+            else
+            {
+                line($"[失败] 生成的 Lua 缺少：{string.Join("；", missing.Select(static row => row.Why))}。");
+                failures++;
+            }
+
+            // 终点页才允许 EndMessage：菜单页若也收尾，窗口会一闪而过。
+            var endCount = lua.Split("NPCFUN:EndMessage(true)").Length - 1;
+            if (endCount == 1)
+            {
+                line("[通过] 只有没有按钮的那一页调了 EndMessage。");
+            }
+            else
+            {
+                line($"[失败] EndMessage 出现了 {endCount} 次，应该只有 1 次（终点页）。");
+                failures++;
+            }
+
+            // 重名页必须被拒（客户端只按 Index 找内容）。
+            try
+            {
+                ClientNpcPatch.GenerateLua([
+                    tree,
+                    tree with { Dialogue = tree.Dialogue with { DialogueKey = key + "_b" } }
+                ]);
+                line("[失败] 两棵树用同一批页号，生成时没有报错。");
+                failures++;
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("全局唯一"))
+            {
+                line("[通过] 两棵树抢同一页号时生成报错。");
+            }
+
+            // NPC 放置：模板来自该图已发布内容，写完读回再删掉。
+            var maps = await store.LoadMapsAsync();
+            short placeMap = 0;
+            NpcTemplateChoice? template = null;
+            foreach (var map in maps)
+            {
+                var candidates = await store.LoadNpcTemplatesAsync(map.MapId);
+                if (candidates.Count > 0)
+                {
+                    placeMap = map.MapId;
+                    template = candidates[0];
+                    break;
+                }
+            }
+
+            if (template is null)
+            {
+                line("[跳过] 没有任何地图能列出已发布的 NPC 外观模板，放置那一步没验。");
+            }
+            else
+            {
+                line($"[信息] 放置底稿地图 map{placeMap}：外观模板 {template.TemplateKey}" +
+                     $"（外观 {template.AppearanceType}，该图已在用 {template.UsedCount} 个）。");
+                var spawnName = $"__selftest_npc_spawn__{stamp}";
+                var existingSpawns = await store.LoadSpawnRowsAsync(placeMap);
+                var probeObjectId = 47_900u;
+                while (existingSpawns.Any(row => row.ObjectId == probeObjectId))
+                {
+                    probeObjectId++;
+                }
+
+                await store.SaveSpawnAsync(
+                    new GmNpcSpawnInput(
+                        spawnName,
+                        placeMap,
+                        $"gm_selftest_{stamp}",
+                        template.TemplateKey,
+                        key,
+                        null,
+                        probeObjectId,
+                        template.AppearanceType,
+                        template.SampleX + 3f,
+                        template.SampleZ + 3f,
+                        1.5f,
+                        true,
+                        "自检"),
+                    "selftest");
+                var afterSpawn = await store.LoadSpawnRowsAsync(placeMap);
+                var savedSpawn = afterSpawn.FirstOrDefault(row => row.Name == spawnName);
+                if (savedSpawn is null ||
+                    savedSpawn.ObjectId != probeObjectId ||
+                    savedSpawn.DialogueKey != key ||
+                    savedSpawn.TemplateKey != template.TemplateKey)
+                {
+                    line("[失败] NPC 放置存回来的内容不对。");
+                    failures++;
+                }
+                else
+                {
+                    line($"[通过] NPC 放置存库读回：对象 {savedSpawn.ObjectId}、绑定对话 {savedSpawn.DialogueKey}。");
+                }
+
+                await store.DeleteSpawnAsync(savedSpawn!.Id);
+                var afterDelete = await store.LoadSpawnRowsAsync(placeMap);
+                if (afterDelete.Count == existingSpawns.Count &&
+                    afterDelete.All(row => row.Name != spawnName))
+                {
+                    line("[通过] 删除放置后列表恢复原样。");
+                }
+                else
+                {
+                    line($"[失败] 删除放置没干净：{existingSpawns.Count}→{afterDelete.Count}。");
+                    failures++;
+                }
+            }
+
+            // 在临时目录里拿**真实客户端文件**的副本试补丁。
+            var realRoot = settings.ClientRoot;
+            var realDispatch = Path.Combine(realRoot, ClientNpcPatch.DispatchRelativePath);
+            var realLoad = Path.Combine(realRoot, ClientNpcPatch.LoadRelativePath);
+            if (!File.Exists(realDispatch) || !File.Exists(realLoad))
+            {
+                line($"[跳过] 客户端目录 {realRoot} 里找不到 NpcFun.lua / NpcFunLoad.xml，" +
+                     "补丁落地这一步没验。");
+            }
+            else
+            {
+                var tempNpcFun = Path.Combine(tempRoot, "Localization", "en_us", "UI", "XML", "NpcFun");
+                Directory.CreateDirectory(tempNpcFun);
+                File.Copy(realDispatch, Path.Combine(tempNpcFun, "NpcFun.lua"));
+                File.Copy(realLoad, Path.Combine(tempRoot, ClientNpcPatch.LoadRelativePath));
+
+                var first = ClientNpcPatch.Apply(tempRoot, [tree]);
+                var dispatchText = File.ReadAllText(Path.Combine(tempNpcFun, "NpcFun.lua"));
+                var loadText = File.ReadAllText(
+                    Path.Combine(tempRoot, ClientNpcPatch.LoadRelativePath));
+                var branchCount = dispatchText.Split("NPC_FLAG_SYS_GMTOOL").Length - 1;
+                var scriptCount = loadText
+                    .Split(ClientNpcPatch.GeneratedLuaFileName).Length - 1;
+                if (first.LuaChanged && first.DispatchChanged && first.LoadChanged &&
+                    branchCount == 1 && scriptCount == 1)
+                {
+                    line("[通过] 补丁落地：新 Lua 已写、分派插了 1 个分支、加载表登记了 1 行。");
+                }
+                else
+                {
+                    line($"[失败] 补丁落地不对：Lua={first.LuaChanged} 分派={first.DispatchChanged} " +
+                         $"加载={first.LoadChanged} 分支数={branchCount} 脚本名出现={scriptCount}。");
+                    failures++;
+                }
+
+                if (branchCount == 1 && dispatchText.Contains(
+                        "Type == NPC_FLAG_SYS_TRANMIT then",
+                        StringComparison.Ordinal))
+                {
+                    line("[通过] 原有分派链没被动过（TRANMIT 那支还在）。");
+                }
+                else
+                {
+                    line("[失败] 原有分派链被改坏了。");
+                    failures++;
+                }
+
+                var second = ClientNpcPatch.Apply(tempRoot, [tree]);
+                if (!second.LuaChanged && !second.DispatchChanged && !second.LoadChanged)
+                {
+                    line("[通过] 再跑一次补丁：三个文件都没变化（幂等）。");
+                }
+                else
+                {
+                    line($"[失败] 补丁不幂等：Lua={second.LuaChanged} 分派={second.DispatchChanged} " +
+                         $"加载={second.LoadChanged}。");
+                    failures++;
+                }
+
+                if (second.Backups.Count == 0 && first.Backups.Count == 2)
+                {
+                    line("[通过] 只在真正改动前备份（第一次 2 个，第二次 0 个）。");
+                }
+                else
+                {
+                    line($"[失败] 备份数量不对：第一次 {first.Backups.Count}，第二次 {second.Backups.Count}。");
+                    failures++;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            line($"[失败] NPC 回环抛异常：{ex.Message}");
+            failures++;
+        }
+        finally
+        {
+            try
+            {
+                if (created)
+                {
+                    await store.DeleteDialogueAsync(key);
+                }
+            }
+            catch (Exception ex)
+            {
+                line($"[失败] 清理探针对话失败：{ex.Message}");
+                failures++;
+            }
+
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+
+            var left = (await store.LoadTreesAsync())
+                .Any(row => row.Dialogue.DialogueKey == key);
+            if (left)
+            {
+                line("[失败] 探针对话没删掉。");
+                failures++;
+            }
+            else
+            {
+                line("[通过] 清理完成，探针对话已删除。");
             }
         }
 

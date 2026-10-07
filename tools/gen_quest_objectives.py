@@ -15,14 +15,17 @@ The positions come from Quest.xml's CreatureMapID / CreatureMapPos and are
 paired with the objectives in order. They are the fallback: the monster's
 display name is what actually identifies the target.
 
-Only objectives the server can verify are emitted. Collecting or delivering is
-not something a monster death can satisfy, so those clauses are skipped, which
-leaves the quest ungated rather than permanently blocked.
+Previously working objectives are retained unchanged. New objectives are read
+by complete_quest_kill_rules from audited client fields. Unresolved target
+bindings are listed explicitly and must never become automatic completions.
+The legacy parse_objectives helper remains for reading explicit capture names;
+its historical missing-number default is not a verified quantity.
 """
 
 import os
 import re
 import sys
+from pathlib import Path
 
 QUEST_XML = r"D:\Godswar Origin\Localization\en_us\Settings\Sys\Quest.xml"
 QUEST_TEXT_DIR = r"D:\Godswar Origin\Localization\en_us\Text\Quest"
@@ -254,13 +257,13 @@ def emit(generated):
     lines.append("internal static partial class StarterQuestObjectives")
     lines.append("{")
     lines.append("    /// <summary>Bits one objective counter occupies.</summary>")
-    lines.append("    public const int CounterBits = 8;")
+    lines.append("    public const int CounterBits = 16;")
     lines.append("")
     lines.append("    /// <summary>How many objectives one quest can track.</summary>")
     lines.append("    public const int CounterSlots = 4;")
     lines.append("")
     lines.append("    /// <summary>Largest count a slot can hold.</summary>")
-    lines.append("    public const int CounterMaximum = (1 << CounterBits) - 1;")
+    lines.append("    public const int CounterMaximum = short.MaxValue;")
     lines.append("")
     lines.append("    /// <summary>How close a kill has to be when the name is unknown.</summary>")
     lines.append("    public const float MatchRadius = 40.0f;")
@@ -283,22 +286,22 @@ def emit(generated):
     lines.append("            : [];")
     lines.append("")
     lines.append("    /// <summary>Reads one objective's counter out of the packed progress.</summary>")
-    lines.append("    public static int Counter(int progress, int slot) =>")
-    lines.append("        (progress >> (slot * CounterBits)) & CounterMaximum;")
+    lines.append("    public static int Counter(long progress, int slot) =>")
+    lines.append("        (int)((progress >> (slot * CounterBits)) & CounterMaximum);")
     lines.append("")
     lines.append("    /// <summary>Writes one objective's counter back into the progress.</summary>")
-    lines.append("    public static int WithCounter(int progress, int slot, int value)")
+    lines.append("    public static long WithCounter(long progress, int slot, int value)")
     lines.append("    {")
     lines.append("        var clamped = Math.Clamp(value, 0, CounterMaximum);")
     lines.append("        var shift = slot * CounterBits;")
-    lines.append("        return (progress & ~(CounterMaximum << shift)) |")
-    lines.append("            (clamped << shift);")
+    lines.append("        return (progress & ~((long)ushort.MaxValue << shift)) |")
+    lines.append("            ((long)clamped << shift);")
     lines.append("    }")
     lines.append("")
     lines.append("    /// <summary>True when every objective has been satisfied.</summary>")
     lines.append("    public static bool IsSatisfied(")
     lines.append("        IReadOnlyList<QuestObjective> objectives,")
-    lines.append("        int progress)")
+    lines.append("        long progress)")
     lines.append("    {")
     lines.append("        for (var slot = 0; slot < objectives.Count; slot++)")
     lines.append("        {")
@@ -541,52 +544,19 @@ def resolve_monster(name, table):
 
 
 def main():
-    rows = quest_rows()
-    monsters = monster_ids()
+    # The retained rules preserve existing playable tasks. New rules come only
+    # from audited client goal fields, with quantity provenance recorded.
     generated = []
-    for quest_id in chain_ids():
-        attributes = rows.get(quest_id)
-        if attributes is None:
-            continue
-        text = objectives_text(quest_id)
-        if not text:
-            continue
-        parsed = parse_objectives(text, monsters)
-        if not parsed:
-            continue
-        spots = positions(attributes)
-        objectives = []
-        for index, (target, count) in enumerate(parsed):
-            if index < len(spots):
-                map_id, x, z = spots[index]
-            elif spots:
-                map_id, x, z = spots[-1]
-            else:
-                map_id, x, z = 0, 0.0, 0.0
-            monster_id, resolved = resolve_monster(target, monsters)
-            # Only an alias makes the name worth carrying: it means the quest
-            # text calls the target something the client's monster table does
-            # not use, so the kill would never be credited on the text alone.
-            # A looser resolution (a longer quest phrase, a plural) already
-            # matches by substring and must keep matching on the text.
-            match = resolved if needle(target) in TARGET_ALIASES else ""
-            objectives.append((target, match, count, monster_id, map_id, x, z))
-        if len(objectives) > 1 and any(item[3] for item in objectives):
-            # "Defeat the strongest boss, Scorpion Lord Selket!" splits into the
-            # real target and the appositive in front of it. When a quest names
-            # at least one monster the client knows, a clause it does not know is
-            # that kind of noise, not a second requirement - keeping it would ask
-            # the player for a kill nothing can ever credit.
-            objectives = [item for item in objectives if item[3]]
-        generated.append((quest_id, objectives))
-        print(f"quest {quest_id}: " + ", ".join(
-            f"{count}x {target}"
-            + (f" [= {match}]" if match else "")
-            + f" (monster {monster_id}) @ map {map_id} ({x:g},{z:g})"
-            for target, match, count, monster_id, map_id, x, z in objectives))
-
+    from complete_quest_kill_rules import complete
+    generated, unresolved = complete(generated, sys.modules[__name__])
     with open(OUTPUT, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(emit(generated))
+    pending = Path(OUTPUT).with_name('QuestUnresolvedRequirements.Generated.cs')
+    pending.write_text('// Generated by tools/gen_quest_objectives.py.\n'
+        'namespace Godswar.Server.Domain.World.Content;\n'
+        'internal static class QuestUnresolvedRequirements\n{\n'
+        '    internal static readonly HashSet<uint> QuestIds = [' +
+        ', '.join(f'{q}u' for q in unresolved) + '];\n}\n', encoding='utf-8')
     print(f"wrote {OUTPUT} with {len(generated)} quest(s)")
     return 0
 

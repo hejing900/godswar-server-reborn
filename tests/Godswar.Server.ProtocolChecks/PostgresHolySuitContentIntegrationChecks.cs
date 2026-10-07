@@ -159,7 +159,7 @@ internal static class PostgresHolySuitContentIntegrationChecks
         {
             command.Parameters.AddWithValue("characterId", characterId);
             Check.Equal(
-                15,
+                85, // Code 705 contributes 65 points; code 210 contributes 20.
                 Convert.ToInt32(await command.ExecuteScalarAsync()),
                 "explicit Holy Suit point recomputation returns derived total");
         }
@@ -180,7 +180,7 @@ internal static class PostgresHolySuitContentIntegrationChecks
             Check.True(await reader.ReadAsync(),
                 "Holy Suit durable-state query returns one row");
             Check.True(
-                reader.GetInt32(0) == 15 &&
+                reader.GetInt32(0) == 85 &&
                 reader.GetInt64(1) == 100_000_000 &&
                 reader.GetInt64(2) == 1,
                 "point recomputation excludes bag and non-regular slots");

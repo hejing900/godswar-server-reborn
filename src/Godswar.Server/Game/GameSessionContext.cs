@@ -54,6 +54,9 @@ internal sealed record GameSessionContext(
         Task<PreparedPveMonsterKillReward?>>?
         PreparePveMonsterKillReward { get; init; }
 
+    public Func<GameSessionContext, CancellationToken, Task>?
+        RecordQuestPlayerKill { get; init; }
+
     public string DisplayName => string.IsNullOrWhiteSpace(CharacterName)
         ? $"character:{CharacterId}"
         : CharacterName;

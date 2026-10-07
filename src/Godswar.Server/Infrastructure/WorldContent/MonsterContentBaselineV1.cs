@@ -7,11 +7,11 @@ namespace Godswar.Server.Infrastructure.WorldContent;
 
 internal static class MonsterContentBaselineV1
 {
-    public const int ExpectedEntryCount = 3191;
+    public const int ExpectedEntryCount = 3341;
     public const string ExpectedRevision =
-        "968B5D9EF97C62279EB1E84F7E6CD45AEC403EFD14CBF106652BEB8BB538A305";
+        "A0A1BD6B4D9F5C78700E2DD5089B2E71F7AA3EDA4B2B6B653754FB8230B68FED";
     public const string ExpectedArtifactSha256 =
-        "FB5AB48845583322CAC5911ACFA5B6466772718A8D6AEBC09BD8809ABA50F98D";
+        "689B5619C593489E0ECC4EC4F383271420D0ABC9B3680FA30030246EC7FBA634";
     public const string Source = "reviewed-capture-promotion-v1";
 
     private const string ResourceName =

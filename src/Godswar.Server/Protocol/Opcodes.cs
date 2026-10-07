@@ -89,7 +89,22 @@ internal static class Opcodes
     // MSG_PLAYER_ACCEPTQUESTS. Quest snapshots are character-specific and
     // must never be replayed from a captured login session.
     public const ushort PlayerAcceptedQuests = 10090;
+    // 10091 is bidirectional-looking but only ever C2S, and one opcode carries two
+    // client actions told apart by the payload word at +4:
+    //   0x00810EFB  the pair that follows an accept. All 33 captured samples sit
+    //               directly behind a C2S 10082.
+    //   16, and once 4
+    //               the quest window's "查找" (Inquire) button. None of the 35
+    //               captured samples follows a 10082.
+    // The reference answers both with the same 48-byte S2C 10092 - the character's
+    // currently acceptable quests - which is empty right after an accept, and that
+    // is why the accept-path captures show it all zero. Do not treat the zero
+    // frame as the fixed shape; see docs/quest-lookup-panel-20261006.md.
     public const ushort QuestActionPair = 10091;
+    //   S2C 10092 (48) +4 = count, +8 = 20 x u16 quest id. The reference sent the
+    //   same 19 ids to four clicks in a row at 2026-10-06 16:45:40, for a level-57
+    //   Athens character, and sent 0 once that character held the only quest it
+    //   could still take.
     public const ushort QuestActionPairAck = 10092;
     // The quest window's third tab ("经验加成" / Increase EXP gain) carries the
     // 我要鉴定 ("Appraisal") button. The stock client sends a six-byte 10093
@@ -105,6 +120,18 @@ internal static class Opcodes
     public const ushort QuestMarkerList = 10077;
     public const ushort QuestHandInList = 10080;
     public const ushort QuestHandInAck = 10086;
+    // 10078 and 10079 are the global quest-mark lists: which npcs the client
+    // should draw a quest mark over, so its quest-search panel can list the
+    // quests it may still take without the player having to walk to every npc.
+    // Both are a fixed 648 bytes with the same shape - +4 the count and then one
+    // u32 npc interaction id each - and neither exists in the installed client's
+    // own tables, so they are answered from the chain.
+    //   S2C 10078  the npcs that have a quest the character may accept now
+    //   S2C 10079  the npcs that take back a quest the character can hand in now
+    // Captured 2026-10-06 13:42:25 (10078, one id: 5036 = Sparta_039) and
+    // 2026-09-28 02:09:33 (the pair, both carrying 5176 at login).
+    public const ushort QuestAvailableNpcList = 10078;
+    public const ushort QuestHandInNpcList = 10079;
     public const ushort NpcDialogOpen = 10067;
     public const ushort NpcDialogPageRequest = 10068;
     public const ushort NpcFunctionAction = 10069;

@@ -27,6 +27,7 @@ internal sealed partial class GameClientHandler
 
     private sealed record QuestRewardOffer(
         uint QuestId,
+        Guid RewardClaimId,
         IReadOnlyList<QuestRewardItem> Items,
         DateTimeOffset ExpiresAt);
 
@@ -36,29 +37,21 @@ internal sealed partial class GameClientHandler
     /// against whatever the client claims.
     /// </summary>
     /// <remarks>
-    /// The built-in menu is accepted as well as the current one, because the client
-    /// keeps the reward menu it was shown when it accepted the quest: a quest
-    /// accepted before the GM tool changed its reward is handed in with the old
-    /// item, and refusing that would silently drop the reward the client already
-    /// paid into its own bag. A quest accepted after the change still announces the
-    /// replaced item, which matches the current menu.
+    /// The GM override owns the reward menu when present. Without an override,
+    /// Resolve returns the original menu. Only the resolved menu can be paid.
     /// </remarks>
     private void OfferQuestRewardItems(uint questId)
     {
         var items = new List<QuestRewardItem>(
             QuestRewardItemCatalog.Resolve(questId));
-        foreach (var builtIn in QuestRewardItemCatalog.ResolveBuiltIn(questId))
-        {
-            if (!items.Any(item => item.ItemId == builtIn.ItemId))
-            {
-                items.Add(builtIn);
-            }
-        }
 
         _pendingQuestRewardOffer = items.Count == 0
             ? null
             : new QuestRewardOffer(
                 questId,
+                StarterQuestChain.Find(questId) is { MaxCompletionsPerDay: > 0 }
+                    ? Guid.NewGuid()
+                    : Guid.Empty,
                 items,
                 DateTimeOffset.UtcNow.AddSeconds(
                     QuestRewardAnnouncementSeconds));
@@ -130,17 +123,13 @@ internal sealed partial class GameClientHandler
             }
         }
 
-        // A menu the client cached before the GM tool changed this quest's reward
-        // can name an item that is in neither the current menu nor the one the quest
-        // shipped with - it paid that item into its own bag, and refusing it would
-        // lose the reward silently. Anything the pinned content recognises is
-        // therefore paid once per quest under the last slot, which is what makes the
-        // reward the player actually received survive a relog. The store still
-        // refuses an item outside that content, so the net is bounded.
-        var staleMenu = slotIndex < 0;
-        if (staleMenu)
+        if (slotIndex < 0)
         {
-            slotIndex = QuestRewardItemCatalog.MaximumSlots - 1;
+            Console.Error.WriteLine(
+                $"[quest-reward] item outside resolved reward menu " +
+                $"character={_character.Name} quest={offer.QuestId} item={itemId}");
+            await SendKitBagRefreshAsync(cancellationToken);
+            return true;
         }
 
         var result = await _monsterRewardExtras.GrantQuestRewardItemAsync(
@@ -151,7 +140,8 @@ internal sealed partial class GameClientHandler
             itemId,
             quantity: 1,
             attributes,
-            cancellationToken);
+            cancellationToken,
+            offer.RewardClaimId);
         if (result.Character is not null)
         {
             InstallUpdatedCharacter(result.Character);
@@ -169,7 +159,7 @@ internal sealed partial class GameClientHandler
                 Console.WriteLine(
                     $"[quest-reward] item paid character={_character.Name} " +
                     $"quest={offer.QuestId} slot={slotIndex} item={itemId} " +
-                    $"announced-slot={bagSlot} stale-menu={staleMenu} " +
+                    $"announced-slot={bagSlot} " +
                     $"status={result.Status}");
                 // A 40-byte 10056 announcement is answered with its own
                 // descriptor; the 52-byte 10114 one has nothing to echo, so the

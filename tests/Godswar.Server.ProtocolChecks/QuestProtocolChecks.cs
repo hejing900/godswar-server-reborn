@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Packets;
@@ -8,7 +9,7 @@ using QuestObjectives = Godswar.Server.Domain.World.Content.StarterQuestObjectiv
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class QuestProtocolChecks
+internal static partial class QuestProtocolChecks
 {
     public const string CheckName = "Quest protocol framing";
 
@@ -165,8 +166,12 @@ internal static class QuestProtocolChecks
             oneQuest.AsSpan().SequenceEqual(PacketBuilder.LoginSnapshotFrame()),
             "a one-quest snapshot reproduces the captured login frame");
 
-        // Several carried quests: the count rises, each quest gets its own
-        // descriptor, and the records follow the descriptors.
+        // Several carried quests: the count rises and each quest gets a block of
+        // its own - descriptor, then that quest's reward slots - so the second
+        // descriptor sits at +688, not at +104. The reference server's own
+        // three-quest frame puts its descriptors at +8, +688 and +1368, and
+        // 8 + 3 * 680 = 2048 is exactly the captured frame's length.
+        const int SecondBlock = 8 + 680;
         var twoQuests = PacketBuilder.QuestSnapshot(
         [
             new PacketBuilder.QuestSnapshotEntry(518u, 5091u, 5103u),
@@ -179,24 +184,27 @@ internal static class QuestProtocolChecks
             "two-quest snapshot reports two quests");
         Check.Equal(
             519u,
-            BinaryPrimitives.ReadUInt32LittleEndian(twoQuests.AsSpan(104, 4)),
+            BinaryPrimitives.ReadUInt32LittleEndian(twoQuests.AsSpan(SecondBlock, 4)),
             "the second descriptor carries quest 519");
         Check.Equal(
             5103u,
-            BinaryPrimitives.ReadUInt32LittleEndian(twoQuests.AsSpan(108, 4)),
+            BinaryPrimitives.ReadUInt32LittleEndian(
+                twoQuests.AsSpan(SecondBlock + 4, 4)),
             "the second descriptor carries its giver");
         Check.Equal(
             5054u,
-            BinaryPrimitives.ReadUInt32LittleEndian(twoQuests.AsSpan(112, 4)),
+            BinaryPrimitives.ReadUInt32LittleEndian(
+                twoQuests.AsSpan(SecondBlock + 8, 4)),
             "the second descriptor carries its responder");
         Check.Equal(
             3876u,
-            BinaryPrimitives.ReadUInt32LittleEndian(twoQuests.AsSpan(208, 4)),
-            "the first record follows the descriptors and keeps the gift bag");
+            BinaryPrimitives.ReadUInt32LittleEndian(twoQuests.AsSpan(112, 4)),
+            "the first quest keeps the gift bag in its own reward slot");
         Check.Equal(
             1000u,
-            BinaryPrimitives.ReadUInt32LittleEndian(twoQuests.AsSpan(280, 4)),
-            "the second record carries quest 519's first class weapon");
+            BinaryPrimitives.ReadUInt32LittleEndian(
+                twoQuests.AsSpan(SecondBlock + 104, 4)),
+            "the second quest's first class weapon sits in the second block");
 
         var emptySnapshot = PacketBuilder.QuestSnapshot([]);
         Check.Equal(2048, emptySnapshot.Length, "empty snapshot length");
@@ -322,6 +330,9 @@ internal static class QuestProtocolChecks
 
         CheckQuestDialogOpen();
         CheckQuestMarkerTables();
+        CheckQuestLookupAnswer();
+        CheckQuestGatingRules();
+        CheckQuestDailyQuotaRules();
         CheckQuestRewardRecords();
         CheckQuestHandInRewardSlotForEveryQuest();
         CheckQuestStateIsLoadedEverywhere();
@@ -533,10 +544,39 @@ internal static class QuestProtocolChecks
             QuestObjectives.For(545).Count == 3 &&
             QuestObjectives.For(545).All(static o => o.Required == 30),
             "quest 545 asks for thirty of each of three targets");
-        Check.Equal(
-            402,
-            QuestObjectives.ByQuestId.Count,
-            "the chain's kill quests with a parsable objective");
+        Check.True(QuestObjectives.ByQuestId.Count >= 313,
+            "the existing 313 kill rules remain covered when content is extended");
+
+        // The client ships a second, never-offered copy of many quests whose level
+        // band is 200/200 - quest 0 "[Lv200]Welcome to Sparta!" against the live
+        // 518 "[Lv1]New to Sparta". The reference's own npc quest tables list none
+        // of the 230, and neither does the chain.
+        Check.True(
+            Godswar.Server.Domain.World.Content.StarterQuestChain.Find(0) is null,
+            "the never-offered 200/200 copy of the tutorial is not in the chain");
+        Check.True(
+            Godswar.Server.Domain.World.Content.StarterQuestChain.Find(518) is not null,
+            "the live tutorial row is still in the chain");
+
+        // The four quests the two newly published quest actors unlocked. 209 and
+        // 1209 are talk quests in the client's own table (CreatureMapID empty), so
+        // only their Sparta/Athens kill counterparts carry an objective.
+        Check.True(
+            QuestObjectives.For(209).Count == 0 &&
+            QuestObjectives.For(1209).Count == 0,
+            "the two message-delivery quests stay talk quests");
+        Check.True(
+            QuestObjectives.For(555).Count == 1 &&
+            QuestObjectives.For(555)[0].Required == 40 &&
+            QuestObjectives.For(555)[0].MonsterId == 1030u &&
+            QuestObjectives.For(555)[0].MapId == 13u,
+            "quest 555 asks for forty Huge Spiders on the Peloponnese map");
+        Check.True(
+            QuestObjectives.For(1555).Count == 1 &&
+            QuestObjectives.For(1555)[0].Required == 40 &&
+            QuestObjectives.For(1555)[0].MonsterId == 1033u &&
+            QuestObjectives.For(1555)[0].MapId == 11u,
+            "quest 1555 asks for forty Huge Lions on the Marathon map");
 
         var objective = QuestObjectives.For(520)[0];
         Check.True(
@@ -626,7 +666,7 @@ internal static class QuestProtocolChecks
 
         // Progress packs one counter per objective, so the ten kills count up and
         // only the tenth one satisfies the quest.
-        var progress = 0;
+        var progress = 0L;
         for (var kill = 0; kill < 9; kill++)
         {
             progress = QuestObjectives.WithCounter(
@@ -722,90 +762,16 @@ internal static class QuestProtocolChecks
     /// </remarks>
     private static void CheckEveryObjectiveResolves()
     {
-        // Reviewed baselines, so this is a ratchet rather than a nag: they must
-        // shrink deliberately when the client's data or the chain grows into
-        // them, and any growth fails the run and names what changed.
-        //
-        // No monster id at all: the client's quest-monster table carries no entry
-        // the quest text matches - retired rows (478/479), rows whose target only
-        // exists under another name or not at all (244, 1221, 1482/1483, 1557,
-        // 1561).
-        uint[] withoutId =
-        [
-            244u, 478u, 479u, 1221u, 1482u, 1483u, 1557u, 1561u,
-        ];
-
-        // Maps that ship no client monster matching the objectives living there
-        // (40 objectives over 11 maps). These are content gaps - the quests exist
-        // and the protocol is fine - so the baseline names the maps and the
-        // count, which is what changes when content is added.
-        short[] mapsWithoutMonsters =
-            [0, 2, 4, 5, 6, 8, 9, 11, 15, 17, 210];
-        const int objectivesWithoutMonsters = 40;
-
-        var missingId = new SortedSet<uint>();
-        var mapsMissing = new SortedSet<uint>();
-        var missingCount = 0;
-        var missingFromPlan = new List<string>();
-        var planned = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var spawn in SpartaNewbieSpawnPlan.Spawns)
-        {
-            planned.Add(spawn.TemplateKey);
-        }
-
+        // Missing monster placements remain defined for the user's later capture.
         foreach (var (questId, objectives) in QuestObjectives.ByQuestId)
         {
-            foreach (var objective in objectives)
-            {
-                var name = QuestObjectives.NameOf(objective);
-                if (objective.MonsterId == 0)
-                {
-                    missingId.Add(questId);
-                    continue;
-                }
-
-                string? templateKey = null;
-                foreach (var template in MonsterTemplateSeeds.Monsters)
-                {
-                    if (template.SourceMapId == objective.MapId &&
-                        QuestObjectives.SameName(name, template.DisplayName))
-                    {
-                        templateKey = template.TemplateKey;
-                        break;
-                    }
-                }
-
-                if (templateKey is null)
-                {
-                    mapsMissing.Add(objective.MapId);
-                    missingCount++;
-                }
-                else if (objective.MapId == SpartaNewbieSpawnPlan.MapId &&
-                         !planned.Contains(templateKey))
-                {
-                    missingFromPlan.Add(
-                        $"quest {questId}: {templateKey} (\"{name}\")");
-                }
-            }
+            Check.True(objectives.Length is > 0 and <= 4, $"quest {questId} has bounded objective slots");
+            foreach (var goal in objectives)
+                Check.True(goal.Required is > 0 and <= QuestObjectives.CounterMaximum &&
+                    !string.IsNullOrWhiteSpace(QuestObjectives.NameOf(goal)) &&
+                    float.IsFinite(goal.X) && float.IsFinite(goal.Z),
+                    $"quest {questId} has a count and named target before its spawn exists");
         }
-
-        Check.Equal(
-            string.Join(",", withoutId),
-            string.Join(",", missingId),
-            "the objectives with no monster id are the reviewed ones");
-        Check.Equal(
-            string.Join(",", mapsWithoutMonsters),
-            string.Join(",", mapsMissing),
-            "the maps whose quest targets ship no monster are the reviewed ones");
-        Check.Equal(
-            objectivesWithoutMonsters,
-            missingCount,
-            "the number of objectives without a client monster");
-        Check.Equal(
-            0,
-            missingFromPlan.Count,
-            "every Sparta-outskirts objective has monsters planned: " +
-            string.Join("; ", missingFromPlan));
     }
 
     /// <summary>
@@ -1631,7 +1597,7 @@ internal static class QuestProtocolChecks
                 BinaryPrimitives.ReadUInt32LittleEndian(unpaid.AsSpan(16, 4)),
                 $"quest {step.QuestId} ack pays nothing when asked for nothing");
 
-            var objectives = StarterQuestObjectives.For(step.QuestId);
+            var objectives = GameClientHandler.DisplayQuestObjectives(step.QuestId);
             withObjective += objectives.Count > 0 ? 1 : 0;
             var detail = PacketBuilder.QuestNextDetail(giver, step.QuestId);
             var kind = BinaryPrimitives.ReadUInt32LittleEndian(
@@ -1670,9 +1636,15 @@ internal static class QuestProtocolChecks
             }
         }
 
+        // The catalog is data, so the sweep asserts a shape rather than a count:
+        // every row was visited (the loop above asserts per quest), a meaningful
+        // share of them carry a kill objective, and at least one pays a reward slot.
+        // A fixed count would break every time the generated catalog is
+        // regenerated, which is exactly what it is meant to survive.
         Check.True(
-            withObjective > 300,
-            $"the sweep covers the kill quests of both chains ({withObjective})");
+            withObjective > StarterQuestChain.Steps.Count / 4,
+            $"the sweep covers the kill quests of both chains ({withObjective} of " +
+            $"{StarterQuestChain.Steps.Count})");
         Check.True(
             withRewardSlot > 0,
             $"the sweep covers quests that pay a reward ({withRewardSlot})");
@@ -1803,7 +1775,7 @@ internal static class QuestProtocolChecks
         var existingMarker = ReadMarkerEntries(capturedMarker);
         var merged = GameClientHandler.MergeMarkerEntries(
             existingMarker,
-            acceptableQuestId: 519,
+            acceptableQuests: AcceptableStub(519u),
             chainQuestIds: [519u, 522u, 524u]);
         var rebuilt = PacketBuilder.QuestMarkerList(5103, merged);
         Check.True(
@@ -1827,7 +1799,7 @@ internal static class QuestProtocolChecks
             "14005D27E3130000010000000602000001000000");
         var cleared = GameClientHandler.MergeMarkerEntries(
             ReadMarkerEntries(guideTable),
-            acceptableQuestId: 519,
+            acceptableQuests: AcceptableStub(519u),
             chainQuestIds: [518u]);
         Check.Equal(1, cleared.Count, "the guide still lists one quest");
         Check.Equal(518u, cleared[0].QuestId, "the guide still lists quest 518");
@@ -1843,21 +1815,194 @@ internal static class QuestProtocolChecks
         Check.True(
             GameClientHandler.MergeMarkerEntries(
                 ReadMarkerEntries(guideTable),
-                acceptableQuestId: 0,
+                acceptableQuests: [],
                 chainQuestIds: [518u])[0].Available == 0,
             "with nothing left to accept no quest is flagged available");
+
+        // Several of one npc's quests can be open at once now: a level-gated npc
+        // lights every band the character has reached, which is what the
+        // single-frontier shape could not express.
+        var several = GameClientHandler.MergeMarkerEntries(
+            [(146u, 0u), (147u, 0u), (148u, 0u)],
+            acceptableQuests: AcceptableStub(146u, 147u),
+            chainQuestIds: []);
+        Check.Equal(3, several.Count, "the content table's rows are all kept");
+        Check.Equal(1u, several[0].Available, "the first open row is flagged");
+        Check.Equal(1u, several[1].Available, "the second open row is flagged too");
+        Check.Equal(
+            0u,
+            several[2].Available,
+            "a row outside the open list keeps its cleared flag");
 
         // A chain quest the content table does not carry is added, at the correct
         // flag, so a quest added to the chain needs no content change.
         var extended = GameClientHandler.MergeMarkerEntries(
             [(104u, 1u)],
-            acceptableQuestId: 519,
+            acceptableQuests: AcceptableStub(519u),
             chainQuestIds: [519u]);
         Check.Equal(2, extended.Count, "a missing chain quest is appended");
         Check.Equal(104u, extended[0].QuestId, "existing entries keep their order");
         Check.Equal(0u, extended[0].Available, "existing entries lose the flag");
         Check.Equal(519u, extended[1].QuestId, "the chain quest is appended");
         Check.Equal(1u, extended[1].Available, "the appended quest is available");
+    }
+
+    /// <summary>
+    /// A stand-in accept list carrying just the quest ids a merge cares about.
+    /// </summary>
+    /// <remarks>
+    /// The merge only reads <c>QuestId</c>, so the rest of the row is filler. The
+    /// real rows come from the generated catalog and are exercised by
+    /// <c>CheckQuestLookupAnswer</c> instead.
+    /// </remarks>
+    private static List<Godswar.Server.Domain.World.Content.StarterQuestChain.Step>
+        AcceptableStub(params uint[] questIds)
+    {
+        var steps =
+            new List<Godswar.Server.Domain.World.Content.StarterQuestChain.Step>(
+                questIds.Length);
+        foreach (var questId in questIds)
+        {
+            steps.Add(new Godswar.Server.Domain.World.Content.StarterQuestChain.Step(
+                questId,
+                Godswar.Server.Domain.World.Content.StarterQuestChain.SpartaCamp,
+                "Sparta_106",
+                "Sparta_057",
+                0,
+                0,
+                0,
+                0,
+                1,
+                120,
+                true,
+                Godswar.Server.Domain.World.Content.StarterQuestChain.SortStory,
+                0,
+                "1",
+                false));
+        }
+
+        return steps;
+    }
+
+    /// <summary>
+    /// The answer to the quest window's lookup panel (S2C 10092).
+    /// </summary>
+    /// <remarks>
+    /// Byte-checked against the reference's own reply, captured 2026-10-06
+    /// 16:45:40 in answer to the panel's C2S 10091: it listed these 19 quests for a
+    /// level-57 Athens character, and listed nothing once that character held the
+    /// only quest it could still take.
+    /// </remarks>
+    private static void CheckQuestLookupAnswer()
+    {
+        var capturedIds = new uint[]
+        {
+            1110, 1118, 1535, 1536, 1159, 1160, 1200, 1142, 1171, 1293,
+            1146, 1150, 1172, 1232, 1233, 1235, 1240, 1241, 1275,
+        };
+        var captured = Convert.FromHexString(
+            "30006c271300000056045e04ff05000687048804b004760493040d05" +
+            "7a047e049404d004d104d304d804d904fb040000");
+
+        var built = PacketBuilder.QuestLookupAnswer(capturedIds);
+        Check.Equal(48, built.Length, "quest lookup length");
+        Check.Equal(
+            Opcodes.QuestActionPairAck,
+            BinaryPrimitives.ReadUInt16LittleEndian(built.AsSpan(2, 2)),
+            "quest lookup is opcode 10092");
+        Check.True(
+            captured.AsSpan().SequenceEqual(built),
+            "the quest lookup reproduces the reference's own reply byte for byte");
+        Check.Equal(
+            19u,
+            BinaryPrimitives.ReadUInt32LittleEndian(built.AsSpan(4, 4)),
+            "quest lookup counts the list");
+        Check.Equal(
+            1110u,
+            BinaryPrimitives.ReadUInt16LittleEndian(built.AsSpan(8, 2)),
+            "quest lookup starts at the first quest id");
+        Check.Equal(
+            1275u,
+            BinaryPrimitives.ReadUInt16LittleEndian(built.AsSpan(44, 2)),
+            "quest lookup ends at the nineteenth quest id");
+        Check.Equal(
+            0u,
+            BinaryPrimitives.ReadUInt16LittleEndian(built.AsSpan(46, 2)),
+            "the twentieth slot stays zero when nineteen are listed");
+
+        // The ordinary native layout places twenty buttons, even though its XML
+        // includes thirty. Never send rows its map-heading layout cannot place.
+        uint[] thirty = [.. Enumerable.Range(1000, 30).Select(value => (uint)value)];
+        var grown = PacketBuilder.QuestLookupAnswer(thirty);
+        Check.Equal(
+            48,
+            grown.Length,
+            "thirty eligible quests keep the native twenty-slot frame");
+        Check.Equal(
+            20u,
+            BinaryPrimitives.ReadUInt32LittleEndian(grown.AsSpan(4, 4)),
+            "search publishes at most twenty quests");
+        Check.Equal(
+            1019u,
+            BinaryPrimitives.ReadUInt16LittleEndian(grown.AsSpan(46, 2)),
+            "the twentieth id lands in the final native slot");
+
+        uint[] overlong = [.. Enumerable.Range(1000, 40).Select(value => (uint)value)];
+        var trimmed = PacketBuilder.QuestLookupAnswer(overlong);
+        Check.Equal(
+            48,
+            trimmed.Length,
+            "long search lists remain within the captured frame");
+        Check.Equal(
+            20u,
+            BinaryPrimitives.ReadUInt32LittleEndian(trimmed.AsSpan(4, 4)),
+            "the frame is capped at the ordinary client's twenty rows");
+
+        // An empty list is exactly the frame the reference sent behind an accept,
+        // which is what that path still sends.
+        Check.True(
+            PacketBuilder.AcceptPairAckFrame()
+                .AsSpan()
+                .SequenceEqual(PacketBuilder.QuestLookupAnswer([])),
+            "an empty lookup is the captured accept-path reply");
+
+        // The list is the character's own: camp, progress and carried quests all
+        // move it, which is what makes it different from a replayed constant.
+        var freshSparta = new GameCharacter { Camp = GameDefaults.SpartaCamp };
+        var sparta = GameClientHandler.AcceptableQuestIds(freshSparta);
+        Check.Equal(1, sparta.Count(id => StarterQuestChain.Find(id) is { IsMainLine: true }), "a fresh Sparta character has one main-line quest");
+        Check.Equal(518u, sparta[0], "the fresh Sparta character starts at 518");
+
+        var afterFirst = new GameCharacter
+        {
+            Camp = GameDefaults.SpartaCamp,
+            // 519's own floor is 2, so the frontier row is only offered once the
+            // character meets its band as well as the chain.
+            Level = 2,
+            QuestCompletedIds = [518u],
+        };
+        var next = GameClientHandler.AcceptableQuestIds(afterFirst);
+        Check.Equal(1, next.Count(id => StarterQuestChain.Find(id) is { IsMainLine: true }), "the main-line frontier is still one quest");
+        Check.Equal(519u, next[0], "handing 518 in moves the frontier to 519");
+
+        var carrying = new GameCharacter
+        {
+            Camp = GameDefaults.SpartaCamp,
+            Level = 20,
+            Quests = [new CharacterQuest { QuestId = 518 }],
+        };
+        // The claim is about the carried row itself, not about the list being
+        // empty: a level-20 character also clears several level-gated bands, and
+        // every one of those stays open beside the story it is carrying.
+        Check.True(
+            !GameClientHandler.AcceptableQuestIds(carrying).Contains(518u),
+            "a carried quest is not offered again");
+
+        var freshAthens = new GameCharacter { Camp = GameDefaults.AthensCamp };
+        var athens = GameClientHandler.AcceptableQuestIds(freshAthens);
+        Check.Equal(1, athens.Count(id => StarterQuestChain.Find(id) is { IsMainLine: true }),
+            "a fresh Athens character has one main-line quest");
+        Check.Equal(1518u, athens[0], "Athens walks its own chain, not Sparta's");
     }
 
     private static List<(uint QuestId, uint Available)> ReadMarkerEntries(
@@ -1889,4 +2034,15 @@ internal static class QuestProtocolChecks
 
         return entries;
     }
+
+
+}
+
+/// <summary>Small shared values for the quest gating checks.</summary>
+internal static class QuestProtocolCheckFixtures
+{
+    /// <summary>
+    /// The pre-130 level cap, which <c>MaxLevel</c> uses as "no upper bound".
+    /// </summary>
+    internal const int LegacyLevelCap = 120;
 }

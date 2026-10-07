@@ -77,6 +77,7 @@ internal static partial class PostgresQuestRewardItemIntegrationChecks
             static (_, _) => Task.FromResult<GameCharacter?>(null));
         try
         {
+            await CheckQuestItemTransactionsAsync(dataSource, connectionString, fixture.AccountId, fixture.CharacterId);
             var revisionBefore = await ReadInventoryRevisionAsync(
                 dataSource,
                 fixture.CharacterId);
@@ -205,6 +206,55 @@ internal static partial class PostgresQuestRewardItemIntegrationChecks
                 dataSource,
                 store,
                 fixture);
+
+            // A daily quest's next completion pays again; retransmitting that
+            // completion's announcement still pays only once.
+            var firstCompletion = Guid.NewGuid();
+            var secondCompletion = Guid.NewGuid();
+            foreach (var completion in new[] { firstCompletion, secondCompletion })
+            {
+                var paid = await store.GrantQuestRewardItemAsync(
+                    fixture.AccountId, fixture.CharacterId, 69u, 0,
+                    BoundRewardItemId, 1, ItemGrantAttributes.None,
+                    rewardClaimId: completion);
+                Check.True(paid.Status == QuestRewardItemGrantStatus.Added,
+                    "each daily completion can receive its reward item");
+                var duplicate = await store.GrantQuestRewardItemAsync(
+                    fixture.AccountId, fixture.CharacterId, 69u, 0,
+                    BoundRewardItemId, 1, ItemGrantAttributes.None,
+                    rewardClaimId: completion);
+                Check.True(duplicate.Status == QuestRewardItemGrantStatus.Duplicate,
+                    "a duplicate announcement does not pay that completion twice");
+            }
+
+            await using var questStore = new PostgresGameStore(connectionString);
+            await questStore.SaveCharacterQuestStateAsync(
+                fixture.AccountId, fixture.CharacterId,
+                [new CharacterQuest { QuestId = 209u, Progress = 4 }],
+                [209u, 535u, 535u]);
+            await using (var saved = dataSource.CreateCommand("""
+                SELECT state, progress FROM public.character_quests
+                WHERE character_id = @characterId AND quest_id = 209;
+                """))
+            {
+                saved.Parameters.AddWithValue("characterId", fixture.CharacterId);
+                await using var reader = await saved.ExecuteReaderAsync();
+                Check.True(await reader.ReadAsync() &&
+                    reader.GetInt16(0) == CharacterQuestStatus.InProgress && reader.GetInt32(1) == 4,
+                    "daily reacceptance persists active progress despite historical completion");
+                Check.True(!await reader.ReadAsync(), "quest persistence emits one row per quest");
+            }
+
+            var quotaDay = QuestDailyState.Today();
+            await questStore.SaveQuestDailyCompletionsAsync(
+                fixture.AccountId, fixture.CharacterId,
+                new Dictionary<uint, GameCharacter.QuestDailyCount>
+                {
+                    [209u] = new(quotaDay, 1)
+                });
+            var counts = await questStore.LoadQuestDailyCompletionsAsync(fixture.CharacterId);
+            Check.True(counts.TryGetValue(209u, out var count) && count.CompletedOn(quotaDay) == 1,
+                "a saved daily quota survives a fresh store read");
         }
         finally
         {

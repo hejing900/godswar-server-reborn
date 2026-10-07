@@ -18,7 +18,7 @@ internal static partial class StarterQuestObjectives
     /// </remarks>
     public static int ActiveSlot(
         IReadOnlyList<QuestObjective> objectives,
-        int progress)
+        long progress)
     {
         for (var slot = 0; slot < objectives.Count; slot++)
         {

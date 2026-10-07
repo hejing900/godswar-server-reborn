@@ -40,11 +40,23 @@ internal static class ReviveLandingCatalog
     /// in both frames and reads 0x0012 here against 0x0001 for Athens, which is
     /// how the landing map is identified.
     /// </para>
+    /// <para>
+    /// The Cursed Land (map 29), captured 2026-10-04 at 10:00:13, 10:01:07,
+    /// 10:01:48, 10:02:10, 10:02:33 and 10:03:26. Six times the character the
+    /// Event Transporter had just placed there died and answered the revive
+    /// prompt with <c>C2S 10028 {596, 2}</c>, and six times the server returned
+    /// the same 28-byte landing frame
+    /// <c>1C002227 54020000 000044C3 00000000 00003042 1D001D00 01000000</c>:
+    /// object 596 at x = -196, y = 0, z = 44, which is also the point the
+    /// Event Transporter lands a character on. The word at +20 reads 0x001D, the
+    /// map's own id, so this is a same-map revive.
+    /// </para>
     /// </remarks>
     private static readonly ReviveLanding[] Landings =
     [
         new(MapId: 1, X: 20f, Z: -100f),
-        new(MapId: 18, X: 56f, Z: 88f)
+        new(MapId: 18, X: 56f, Z: 88f),
+        new(MapId: 29, X: -196f, Z: 44f)
     ];
 
     /// <summary>Every capture-proven landing point, in capture order.</summary>

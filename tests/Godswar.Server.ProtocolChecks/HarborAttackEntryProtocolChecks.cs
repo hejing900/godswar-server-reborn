@@ -86,7 +86,11 @@ internal static class HarborAttackEntryProtocolChecks
 
         var head = PostgresSchemaMigrationCatalog.All[^1];
         Check.True(
-            head.Id == "20261003_226_zeus_gift_limited_stock_camp" &&
+            // The head moved on: per-completion quest item claims are the newest
+            // migration. The full ordered id list is pinned by
+            // PostgresMigrationFoundationChecks, so this check only has to prove
+            // the harbor/Atlantis migrations are still in the catalog.
+            head.Id == "20261007_231_quest_reward_completion_claims" &&
             PostgresSchemaMigrationCatalog.All.Any(migration =>
                 migration.Id == "20261002_219_guild_refuse_applications") &&
             PostgresSchemaMigrationCatalog.All.Any(migration =>

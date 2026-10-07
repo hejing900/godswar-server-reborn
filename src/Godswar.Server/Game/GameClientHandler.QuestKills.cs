@@ -24,97 +24,60 @@ internal sealed partial class GameClientHandler
         MonsterDamageResult damageResult,
         CancellationToken cancellationToken)
     {
-        if (_character is null || _character.Quests.Count == 0)
-        {
-            return;
-        }
-
-        // Map ids are signed in the monster content and unsigned in the
-        // objectives, so a negative id simply matches nothing.
-        var mapId = (uint)Math.Max(0, (int)damageResult.Monster.Definition.MapId);
-        var monsterName = damageResult.Monster.Definition.DisplayName;
-        var x = damageResult.Monster.HomeX;
-        var z = damageResult.Monster.HomeZ;
-
-        var changed = false;
+        if (_character is null || _character.Quests.Count == 0 || !damageResult.Killed ||
+            damageResult.Monster.Definition.MapId < 0) return;
+        var monster = damageResult.Monster;
+        var map = checked((uint)monster.Definition.MapId);
+        var before = _character.Quests.ToDictionary(q => q.QuestId, q => q.Progress);
+        var changes = new List<(uint Quest, uint Monster, bool Met)>();
         foreach (var quest in _character.Quests)
         {
+            var wasMet = AreQuestRequirementsSatisfied(_character, quest);
+            var targetId = 0u;
             var objectives = StarterQuestObjectives.For(quest.QuestId);
-            if (objectives.Count == 0)
-            {
-                continue;
-            }
-
-            for (var slot = 0; slot < objectives.Count; slot++)
+            var reviewedKill = QuestReviewedBatch.ByQuestId.TryGetValue(quest.QuestId, out var reviewed) && !reviewed.Collection;
+            if (reviewed is { Collection: true, PreserveKillQuota: false }) objectives = [];
+            if (reviewedKill)
+                RecordReviewedQuestKill(quest, map, monster.Definition.DisplayName, monster.Definition.TemplateKey);
+            for (var slot = 0; !reviewedKill && slot < objectives.Count; slot++)
             {
                 var objective = objectives[slot];
-                var counter = StarterQuestObjectives.Counter(quest.Progress, slot);
-                if (counter >= objective.Required)
-                {
-                    continue;
-                }
-
-                if (!StarterQuestObjectives.Matches(
-                        objective,
-                        mapId,
-                        monsterName,
-                        x,
-                        z))
-                {
-                    continue;
-                }
-
-                quest.Progress = StarterQuestObjectives.WithCounter(
-                    quest.Progress,
-                    slot,
-                    counter + 1);
-                changed = true;
-                // stderr: stdout diagnostics are folded into counters by the
-                // legacy log suppressor, so this is the channel that survives.
-                Console.Error.WriteLine(
-                    $"[quest] kill counted character={_character.Name} " +
-                    $"quest={quest.QuestId} target=\"{objective.Target}\" " +
-                    $"match=\"{StarterQuestObjectives.NameOf(objective)}\" " +
-                    $"{counter + 1}/{objective.Required} " +
-                    $"monster=\"{monsterName}\" map={mapId} " +
-                    $"x={x:0.##} z={z:0.##}");
-                await SendQuestObjectiveProgressAsync(
-                    quest.QuestId,
-                    objective.MonsterId,
-                    cancellationToken);
-                if (StarterQuestObjectives.IsSatisfied(
-                        objectives,
-                        quest.Progress))
-                {
-                    // The last kill is what makes the quest handable, so the
-                    // "objectives are met" frame goes out now rather than with the
-                    // accept answer.
-                    await SendQuestObjectivesMetAsync(
-                        quest.QuestId,
-                        cancellationToken);
-                }
-                else if (StarterQuestObjectives.Counter(
-                             quest.Progress,
-                             slot) >= objective.Required)
-                {
-                    // That kill finished this objective and the quest still wants
-                    // another kind, but the window counts the one objective it was
-                    // told about - so the next objective is published here,
-                    // otherwise the remaining kills would only be counted on the
-                    // server and the window would never show them.
-                    await SendQuestSnapshotAsync(
-                        $"objective-advanced quest={quest.QuestId} slot={slot}",
-                        cancellationToken);
-                }
-
+                var count = StarterQuestObjectives.Counter(quest.Progress, slot);
+                if (count >= objective.Required || !StarterQuestObjectives.Matches(objective, map,
+                    monster.Definition.DisplayName, monster.HomeX, monster.HomeZ)) continue;
+                quest.Progress = StarterQuestObjectives.WithCounter(quest.Progress, slot, count + 1);
+                targetId = objective.MonsterId;
                 break;
             }
+            // Drops continue after the kill quota is full, until the item quota
+            // is also full. Each actual death gets one independent 15% roll.
+            RecordQuestCollection(quest, map, monster.Definition.DisplayName,
+                monster.HomeX, monster.HomeZ, Random.Shared.NextDouble, monster.Definition.TemplateKey);
+            if (quest.Progress != before[quest.QuestId])
+                changes.Add((quest.QuestId, targetId,
+                    !wasMet && AreQuestRequirementsSatisfied(_character, quest)));
         }
-
-        if (changed)
+        if (changes.Count == 0) return;
+        try { await SaveQuestStateAsync(cancellationToken); }
+        catch
         {
-            await SaveQuestStateAsync(cancellationToken);
+            foreach (var quest in _character.Quests) quest.Progress = before[quest.QuestId];
+            throw;
         }
+        foreach (var change in changes)
+        {
+            if (change.Monster != 0)
+                await SendQuestObjectiveProgressAsync(change.Quest, change.Monster, cancellationToken);
+            else
+                await SendReviewedQuestKillNoticeAsync(_character.Quests.First(q => q.QuestId == change.Quest), cancellationToken);
+            if (change.Met) await SendQuestObjectivesMetAsync(change.Quest, cancellationToken);
+            var quest = _character.Quests.First(q => q.QuestId == change.Quest);
+            if (StarterQuestObjectives.Counter(quest.Progress, QuestCollectCounterSlot) !=
+                StarterQuestObjectives.Counter(before[quest.QuestId], QuestCollectCounterSlot))
+                await SendQuestCollectionNoticeAsync(quest, cancellationToken);
+        }
+        await SendQuestSnapshotAsync("kill-and-collection-progress", cancellationToken);
+        if (changes.Any(change => change.Met)) await SendQuestNpcMarksAsync(cancellationToken);
     }
 
     /// <summary>

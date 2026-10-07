@@ -84,8 +84,12 @@ internal sealed class PostgresQuestRewardContentSnapshotReader
             // A row that configures no attributes keeps the plain item every
             // grant produced before the columns existed. An empty slot stays
             // NULL: attribute id 0 is the real AttackA, not "no attribute".
+            // Quality and star both fall back to 1 when the operator leaves those
+            // boxes alone: quality has a floor of 1 (加固), it is never 0. The GM
+            // tool clamps its own writes to 1 as well, so a row written either way
+            // means the same thing.
             var attributes = new ItemGrantAttributes(
-                reader.IsDBNull(3) ? (short)1 : reader.GetInt16(3),
+                reader.IsDBNull(3) || reader.GetInt16(3) < 1 ? (short)1 : reader.GetInt16(3),
                 reader.IsDBNull(4) ? (short)1 : reader.GetInt16(4),
                 Optional(reader, 5), Optional(reader, 6),
                 Optional(reader, 7), Optional(reader, 8),

@@ -77,6 +77,7 @@ internal sealed partial class GameClientHandler
         }
 
         await RefreshNearbyWorldObjectsAsync("walk", cancellationToken);
+        await RecordQuestExplorationAsync(cancellationToken);
         await PublishPartyPositionRefreshAsync(cancellationToken);
         await PersistCharacterPositionAsync(force: false, cancellationToken);
 

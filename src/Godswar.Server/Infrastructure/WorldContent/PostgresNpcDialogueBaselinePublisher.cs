@@ -20,14 +20,14 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
 {
     private const int PublicationLockNamespace = 1_193_657_936;
     private const int PublicationLockKey = 1_448_298_802;
-    private const string Publisher = "server-baseline-v25-manifest-v1";
+    private const string Publisher = "server-baseline-v27-manifest-v1";
 
     public static string CurrentReleaseRevision =>
         WorldContentRevisionHasher.HashNpcDialogueRelease(
             new WorldContentFamilyRevision("npc-dialogues",
-                NpcDialogueBaselineV25.ExpectedRevision,
-                NpcDialogueBaselineV25.ExpectedHashedEntryCount),
-            NpcDialogueBaselineV25.ExpectedSpawnRevision).Sha256;
+                NpcDialogueBaselineV27.ExpectedRevision,
+                NpcDialogueBaselineV27.ExpectedHashedEntryCount),
+            NpcDialogueBaselineV27.ExpectedSpawnRevision).Sha256;
 
     public static async Task<NpcDialoguePublicationResult>
         EnsurePublishedAsync(
@@ -68,7 +68,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         {
             throw new InvalidDataException(
                 "The published NPC dialogue revision is neither a reviewed " +
-                "V1-V22 predecessor nor the reviewed dependency-bound release.");
+                "V1-V26 predecessor nor the reviewed dependency-bound release.");
         }
 
         var spawnRevision = await ReadCurrentSpawnRevisionAsync(
@@ -77,10 +77,10 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             cancellationToken);
         if (!string.Equals(
                 spawnRevision.Revision,
-                NpcDialogueBaselineV25.ExpectedSpawnRevision,
+                NpcDialogueBaselineV27.ExpectedSpawnRevision,
                 StringComparison.Ordinal) ||
             spawnRevision.EntryCount !=
-                NpcDialogueBaselineV25.ExpectedTextCount)
+                NpcDialogueBaselineV27.ExpectedTextCount)
         {
             throw new InvalidDataException(
                 "The reviewed NPC dialogue baseline does not target the " +
@@ -92,20 +92,20 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             // A sealed publication must remain independent of mutable seed
             // tables after its initial construction.
             var published = new WorldContentFamilyRevision("npc-dialogues",
-                current.Revision, NpcDialogueBaselineV25.ExpectedHashedEntryCount);
+                current.Revision, NpcDialogueBaselineV27.ExpectedHashedEntryCount);
             await VerifyStoredReleaseAsync(connection, transaction, published,
                 spawnRevision.Revision, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return current with { Created = false };
         }
 
-        var texts = NpcDialogueBaselineV25.ApplyTextOverrides(
+        var texts = NpcDialogueBaselineV27.ApplyTextOverrides(
             await ReadOfficialNpcTextsAsync(
                 connection,
                 transaction,
                 spawnRevision.Revision,
                 cancellationToken));
-        var routes = NpcDialogueBaselineV25.CreateRoutes();
+        var routes = NpcDialogueBaselineV27.CreateRoutes();
         var payload = ValidateBaseline(texts, routes);
         var revision = WorldContentRevisionHasher.HashNpcDialogueRelease(
             payload, spawnRevision.Revision);
@@ -159,13 +159,13 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         IReadOnlyList<NpcTextDefinition> texts,
         IReadOnlyList<NpcDialogueRouteDefinition> routes)
     {
-        if (texts.Count != NpcDialogueBaselineV25.ExpectedTextCount ||
-            routes.Count != NpcDialogueBaselineV25.ExpectedRouteCount ||
-            NpcDialogueBaselineV25.Profiles.Length !=
-                NpcDialogueBaselineV25.ExpectedProfileCount ||
-            NpcDialogueBaselineV25.Profiles.Sum(
+        if (texts.Count != NpcDialogueBaselineV27.ExpectedTextCount ||
+            routes.Count != NpcDialogueBaselineV27.ExpectedRouteCount ||
+            NpcDialogueBaselineV27.Profiles.Length !=
+                NpcDialogueBaselineV27.ExpectedProfileCount ||
+            NpcDialogueBaselineV27.Profiles.Sum(
                 static profile => profile.InitialMenuSubIds.Length) !=
-                NpcDialogueBaselineV25.ExpectedMenuEntryCount)
+                NpcDialogueBaselineV27.ExpectedMenuEntryCount)
         {
             throw new InvalidDataException(
                 "The reviewed NPC dialogue baseline has unexpected counts.");
@@ -228,10 +228,10 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         var revision =
             WorldContentRevisionHasher.HashNpcDialogues(texts, routes);
         if (revision.EntryCount !=
-                NpcDialogueBaselineV25.ExpectedHashedEntryCount ||
+                NpcDialogueBaselineV27.ExpectedHashedEntryCount ||
             !string.Equals(
                 revision.Sha256,
-                NpcDialogueBaselineV25.ExpectedRevision,
+                NpcDialogueBaselineV27.ExpectedRevision,
                 StringComparison.Ordinal))
         {
             throw new InvalidDataException(
@@ -378,11 +378,11 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         new(
             revision,
             spawnRevision,
-            NpcDialogueBaselineV25.ExpectedTextCount,
-            NpcDialogueBaselineV25.ExpectedProfileCount,
-            NpcDialogueBaselineV25.ExpectedRouteCount,
-            NpcDialogueBaselineV25.ExpectedMenuEntryCount,
-            NpcDialogueBaselineV25.Source,
+            NpcDialogueBaselineV27.ExpectedTextCount,
+            NpcDialogueBaselineV27.ExpectedProfileCount,
+            NpcDialogueBaselineV27.ExpectedRouteCount,
+            NpcDialogueBaselineV27.ExpectedMenuEntryCount,
+            NpcDialogueBaselineV27.Source,
             Created);
 
     private static bool IsSupportedPreviousRevision(string revision) =>
@@ -535,5 +535,37 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
                     NpcDialogueBaselineV24.ExpectedRevision,
                     NpcDialogueBaselineV24.ExpectedHashedEntryCount),
                 NpcDialogueBaselineV24.ExpectedSpawnRevision).Sha256,
+            StringComparison.Ordinal) ||
+        // The reviewed V25 release, in its raw form and its dependency-bound
+        // form. V25 was bound to the V9 spawn release, so a database published
+        // from the build before this one holds the latter; both stay readable as
+        // predecessors of the V26 Cursed Land release.
+        string.Equals(
+            revision,
+            NpcDialogueBaselineV25.ExpectedRevision,
+            StringComparison.Ordinal) ||
+        string.Equals(
+            revision,
+            WorldContentRevisionHasher.HashNpcDialogueRelease(
+                new WorldContentFamilyRevision("npc-dialogues",
+                    NpcDialogueBaselineV25.ExpectedRevision,
+                    NpcDialogueBaselineV25.ExpectedHashedEntryCount),
+                NpcDialogueBaselineV25.ExpectedSpawnRevision).Sha256,
+            StringComparison.Ordinal) ||
+        // The reviewed V26 Cursed Land release, in its raw form and its
+        // dependency-bound form. V26 was bound to the V10 spawn release, so the
+        // database published before this build holds the latter; both stay
+        // readable as predecessors of the V27 quest-actor release.
+        string.Equals(
+            revision,
+            NpcDialogueBaselineV26.ExpectedRevision,
+            StringComparison.Ordinal) ||
+        string.Equals(
+            revision,
+            WorldContentRevisionHasher.HashNpcDialogueRelease(
+                new WorldContentFamilyRevision("npc-dialogues",
+                    NpcDialogueBaselineV26.ExpectedRevision,
+                    NpcDialogueBaselineV26.ExpectedHashedEntryCount),
+                NpcDialogueBaselineV26.ExpectedSpawnRevision).Sha256,
             StringComparison.Ordinal);
 }

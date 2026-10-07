@@ -45,6 +45,7 @@ internal sealed partial class GameClientHandler
             // with an empty list.
             updated.Quests = current.Quests;
             updated.QuestCompletedIds = current.QuestCompletedIds;
+            updated.QuestDailyCompletions = current.QuestDailyCompletions;
         }
 
         _character = updated;

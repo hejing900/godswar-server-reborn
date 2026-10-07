@@ -345,12 +345,12 @@ internal static class CapturedNpcPlacements
             ["Thebes_All_027"] = new("Thebes_All_027", "Thebes_All_027_Male34", 5449u, 0x211u, 45.0000f, 120.0000f, 2.3000f),
             ["Thebes_All_028"] = new("Thebes_All_028", "Thebes_All_028_Male11", 5450u, 0x211u, 41.0000f, 108.0000f, 1.7000f),
             // map 11: 10 NPCs
-            ["Marathon_006"] = new("Marathon_006", "Marathon_006_AthenianWarrior1", 5480u, 0x211u, -1.0000f, -38.0000f, 2.0000f),
             ["Marathon_All_001"] = new("Marathon_All_001", "Marathon_All_001_Male23", 5475u, 0x211u, 2.0000f, -58.0000f, 2.3000f),
             ["Marathon_All_002"] = new("Marathon_All_002", "Marathon_All_002_FemMale17", 5476u, 0x211u, 26.0000f, -70.0000f, 2.3000f),
             ["Marathon_All_003"] = new("Marathon_All_003", "Marathon_All_003_MaleSage1", 5477u, 0x211u, 7.9000f, -18.1000f, 2.3000f),
             ["Marathon_All_004"] = new("Marathon_All_004", "Marathon_All_004_FemMale16", 5478u, 0x211u, 9.9000f, 98.9000f, 1.7000f),
             ["Marathon_All_005"] = new("Marathon_All_005", "Marathon_All_005_AthenianGen2", 5479u, 0x211u, 28.0000f, -18.0000f, 3.0000f),
+            ["Marathon_All_006"] = new("Marathon_All_006", "Marathon_006_AthenianWarrior1", 5480u, 0x211u, -1.0000f, -38.0000f, 2.0000f),
             ["Marathon_All_007"] = new("Marathon_All_007", "Marathon_All_007_Male17", 5481u, 0x211u, 3.9000f, -25.5000f, 2.3000f),
             ["Marathon_All_008"] = new("Marathon_All_008", "Marathon_All_008_Exec10", 5482u, 0x211u, 67.0000f, 6.8000f, 2.3000f),
             ["Marathon_All_009"] = new("Marathon_All_009", "Marathon_All_009_Male14", 5483u, 0x111u, 19.5000f, -26.0000f, 2.3000f),
@@ -705,12 +705,12 @@ internal static class CapturedNpcPlacements
             ],
             [(short)11] =
             [
-                All["Marathon_006"],
                 All["Marathon_All_001"],
                 All["Marathon_All_002"],
                 All["Marathon_All_003"],
                 All["Marathon_All_004"],
                 All["Marathon_All_005"],
+                All["Marathon_All_006"],
                 All["Marathon_All_007"],
                 All["Marathon_All_008"],
                 All["Marathon_All_009"],

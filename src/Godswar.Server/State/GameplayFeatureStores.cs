@@ -73,7 +73,8 @@ internal interface IMonsterRewardExtrasStore
         uint itemId,
         int quantity,
         ItemGrantAttributes attributes,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        Guid rewardClaimId = default) =>
         Task.FromResult(new QuestRewardItemGrantResult(
             QuestRewardItemGrantStatus.Unsupported,
             Character: null));

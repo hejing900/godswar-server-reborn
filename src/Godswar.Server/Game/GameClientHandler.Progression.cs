@@ -275,6 +275,14 @@ internal sealed partial class GameClientHandler
                 "MonsterKillLevelUpWorld");
         }
 
+        // A level-gated quest opens on its accept band alone, so this kill may have
+        // unlocked one. The mark lists follow a hand-in for the same reason; without
+        // this the new quest would wait for the next hand-in or relog to show up.
+        if (settlement.IsFirstCommit && progression.LevelUps.Count > 0)
+        {
+            await SendQuestLevelUpRefreshAsync(cancellationToken);
+        }
+
         if (settlement.IsFirstCommit &&
             progression.ExperienceGained > 0)
         {

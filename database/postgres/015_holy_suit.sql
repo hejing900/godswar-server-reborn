@@ -125,6 +125,8 @@ CREATE TABLE IF NOT EXISTS holy_suit_effect_templates (
     stat_type smallint NOT NULL,
     unlock_points smallint NOT NULL,
     effect_value numeric NOT NULL,
+    per_point numeric,
+    maximum integer,
     source varchar(128) NOT NULL
 );
 

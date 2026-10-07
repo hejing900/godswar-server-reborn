@@ -439,4 +439,3 @@ LEFT JOIN LATERAL (
     ORDER BY rank_level DESC
     LIMIT 1
 ) ar ON true;
-

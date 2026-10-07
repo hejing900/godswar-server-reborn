@@ -6,13 +6,39 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
-    private async Task<SceneTransitionOutcome> TryBeginSameMapSceneTransitionAsync(
+    /// <summary>
+    /// The reviewed six-argument entry point, used by every existing caller.
+    /// </summary>
+    /// <remarks>
+    /// Kept as its own method for the same reason as the cross-map spelling: the
+    /// Cursed Land random transports are the only callers that need the
+    /// fight-state frame the reference sends before a landing, so that variant
+    /// lives in <see cref="TryBeginSameMapSceneTransitionCoreAsync"/>.
+    /// </remarks>
+    private Task<SceneTransitionOutcome> TryBeginSameMapSceneTransitionAsync(
         float targetX,
         float targetZ,
         string source,
         Func<bool>? continuationGuard,
         CancellationToken cancellationToken,
-        bool publishRevivalVitals = false)
+        bool publishRevivalVitals = false) =>
+        TryBeginSameMapSceneTransitionCoreAsync(
+            targetX,
+            targetZ,
+            source,
+            continuationGuard,
+            cancellationToken,
+            publishRevivalVitals,
+            publishFightStateReset: false);
+
+    private async Task<SceneTransitionOutcome> TryBeginSameMapSceneTransitionCoreAsync(
+        float targetX,
+        float targetZ,
+        string source,
+        Func<bool>? continuationGuard,
+        CancellationToken cancellationToken,
+        bool publishRevivalVitals,
+        bool publishFightStateReset)
     {
         if (_pendingMapTransition is not null ||
             _account is null ||
@@ -152,6 +178,21 @@ internal sealed partial class GameClientHandler
                         _character.CurrentMp),
                     cancellationToken,
                     "SameMapRevivalVitals");
+            }
+
+            if (publishFightStateReset)
+            {
+                // The reference clears the local player's fight flag immediately
+                // before the landing frame on every captured relocation - the
+                // Cursed Land transports and the free revive alike. Sent after
+                // the guards and before the scene change so a rejected
+                // transition never leaves a spurious reset behind.
+                await _session.SendAsync(
+                    PacketBuilder.ObjectFightState(
+                        LocalPlayerObjectId,
+                        engaged: false),
+                    cancellationToken,
+                    "SameMapFightStateReset");
             }
 
             await _session.SendAsync(

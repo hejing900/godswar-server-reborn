@@ -22,4 +22,15 @@ internal sealed partial class GameSessionRegistry
             }
         }
     }
+
+    internal void RegisterQuestPlayerKillRecorder(
+        ClientSession session,
+        Func<GameSessionContext, CancellationToken, Task> recorder)
+    {
+        lock (_gate)
+        {
+            if (_sessions.TryGetValue(session, out var context))
+                _sessions[session] = context with { RecordQuestPlayerKill = recorder };
+        }
+    }
 }

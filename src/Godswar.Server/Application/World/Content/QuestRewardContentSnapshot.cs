@@ -54,11 +54,15 @@ internal sealed class QuestRewardContentSnapshot
         ArgumentNullException.ThrowIfNull(values);
         foreach (var slot in slots)
         {
+            // Quality and star may legitimately be 0 (普通/0星): that is what the
+            // GM tool means when the operator leaves those two boxes alone, and
+            // character_items accepts quality 0..20. Only negative values are
+            // nonsense here.
             if (slot.QuestId == 0 ||
                 slot.SlotIndex is < 0 or >= MaximumRewardSlots ||
                 slot.ItemId == 0 ||
-                slot.Attributes.Quality <= 0 ||
-                slot.Attributes.Grade <= 0)
+                slot.Attributes.Quality < 0 ||
+                slot.Attributes.Grade < 0)
             {
                 throw new InvalidDataException(
                     $"Quest reward slot {slot.QuestId}/{slot.SlotIndex} is invalid.");

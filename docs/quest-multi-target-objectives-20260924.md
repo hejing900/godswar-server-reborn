@@ -78,3 +78,96 @@ SELECT to_char(captured_at AT TIME ZONE 'Asia/Shanghai','MM-DD HH24:MI:SS.MS') A
 FROM packet_transactions
 WHERE opcode IN (10082,10076,10090) AND direction='S2C' ORDER BY captured_at;
 ```
+
+---
+
+# 八、更正与补充（2026-10-06）：目标区里还有"收集物品"这一半
+
+> 【实测·抓包】= `packet_transactions`；【原文·客户端】= `Text/Quest/<id>.dat` +
+> `Text/QuestItem.dat`。
+
+第二节的结论"客户端靠哪几个字节决定画几个目标"只讲了**击杀**那一半。目标区里还有
+**收集物品**那一半，占**另外一对字段**：物品 ID 和数量。之前没认出这对字段，是"多个
+目标的任务客户端只显示一个"的真正原因。
+
+## 8.1 客户端确实有两张目标列表
+
+`Localization/en_us/UI/XML/QuestViewUI.xml` 里，任务窗口声明了两个并列的列表，各 4 行：
+
+| 列表 | 行 | 内容 |
+|---|---|---|
+| `CreatureList`（ID 350029） | `list1..list4` | `<Name>` + `<Count>` —— **击杀目标** |
+| `ItemList`（ID 350028） | `list1..list4` | `<Text>` + `<Count>` —— **收集物品** |
+
+`QuestInfoUI.xml` 里对应 `QuestCreature1..4`（ID 360027–360030）。
+
+## 8.2 物品对在三个帧里的偏移（实测）
+
+| 帧 | 物品 ID | 数量 |
+|---|---|---|
+| `10082` | `+24` | `+40` |
+| `10076` / `10081` | `+20` | `+36` |
+| `10090` 描述符 | `+32` | `+48` |
+
+三个偏移都有参考服自己的帧作证，物品 ID 就是客户端 `Text/QuestItem.dat` 给该名字的编号：
+
+| 帧 | 任务 | 任务文本 | `+ID` | QuestItem.dat | `+数量` |
+|---|---|---|---|---|---|
+| S2C 10082 | 526 | collect 5 Snake Tails | 400 | `400 Snake Tail` | 5 |
+| S2C 10082 / 10076 | 1526 | collect 5 Honeycombs | 300 | `300 Honeycomb` | 5 |
+| S2C 10082 / 10076 | 1528 | collect 8 Snake Fangs | 301 | `301 Snake Fangs` | 8 |
+| S2C 10081 | 1146 | pairs of their Buckteeth | 123 | `123` | 10 |
+| S2C 10090（描述符） | 1557 | back 10 Deer Antlers | 303 | `303 Deer Antler` | 10 |
+
+1557 的描述符同时带着两半，正好互相印证：`+32=303`（物品）、`+48=10`（数量）、
+`+40=1034`（怪）、`+56=100`（数量）。
+
+## 8.3 更正：第二节第 4 条的"反例"是误读
+
+第二节第 4 条把 quest 1528 当成"文本两个目标、参考服只填 1 槽"的反例。看 `1528.dat`
+的原文：
+
+```
+Kill Wilemet the Controller and collect 8 Snake Fangs, then report to [Village Leader]Admes.
+```
+
+第二个目标**是收集物品，不是击杀**，所以击杀数组只该有 1 槽——参考服没有填错，是当时
+不知道 `+24`/`+40` 这对字段，才把它读成了矛盾。
+
+## 8.4 更正：击杀数组只有 4 槽，不是 6 或 8
+
+物品数量就落在 `10082 +40`，也就是"第 5 个击杀槽"该在的位置。526 那帧把这一点证死了：
+
+```
++32=1028（怪，槽 0）  +34=0  +36=0  +38=0  +40=5（蛇尾数量，不是第 5 个怪）
+```
+
+所以击杀数组是 **4 槽**（`+32..+39`），清区不能越过它，否则会把物品数量抹掉。
+`10090` 描述符同理：怪物数组在 `+40`，物品数量在 `+48`。
+代码里 `QuestObjectiveMaximumSlots` 已按 4 收口。
+
+## 8.5 本次修了什么
+
+| 位置 | 内容 |
+|---|---|
+| `Domain/World/Content/StarterQuestCollectObjectives.cs` | **新增**（`tools/gen_quest_collect_objectives.py` 生成）：任务 → (物品 ID, 数量)。物品 ID 取自 `QuestItem.dat` 的名字；同名两条时（`301/403` Snake Fangs、`307/407` Wolf Fangs）按阵营分块（Athens `3xx` / Sparta `4xx`，1528 的 301 即此规则的实测依据）；认不出的子句**丢弃而不猜** |
+| `Packets/PacketBuilder.QuestFrames.cs` | 新增 `WriteCollectObjective`；`QuestAnswer`(10082)、`QuestNextDetail`(10076)、`QuestSnapshot`(10090) 三处写入物品对；`QuestObjectiveMaximumSlots` 6 → **4** |
+| `Packets/PacketBuilder.QuestObjectiveFrames.cs` | `QuestObjectiveDetail`(10081) 原来把目标写成**单个 u32**（会抹掉第 2 槽）；改为按槽写全部目标 + 物品对 |
+| `tests/.../QuestCollectObjectiveChecks.cs` | **新增**：526/1526/1528/1146/1557 的黄金对照（1526/1528 的 10082 整段逐字节），1541 的两个目标槽，四槽不越界，无物品任务保持 0 |
+| `tools/gen_quest_collect_objectives.py` | **新增**生成器；`VERIFIED` 里钉住措辞规则够不到、但有抓包的两个任务（1146、1557） |
+
+验证方式：把 `10082` 与库里 32 帧参考样本逐字节对比（忽略 NPC ID 与 `+16`）。
+修后 1526、1528 **整帧一致**，526 只剩怪物 ID 不同（见 8.6）；1533/1539/1541 等
+多击杀目标任务本来就一致。
+
+## 8.6 这次**没有**修的（已记录，别当成已解决）
+
+1. **击杀目标的怪物 ID 有错**：523/526 我们发 `1012`，参考服发 `1028`；524 我们发
+   `1015`，参考服发 `1029`；1537 第 2 个目标我们发 `2010`（Jungle Minotaur），参考服发
+   `5276`（`[Pet] Baby Minotaur`）。`QuestMonster.dat` 里 `1012` 和 `1028` **同名**
+   （都是 Little Snake），生成器挑错了一条。
+2. **`kind` 不一致**：1292 参考服 56、我们 8；1538/1542 参考服 1、我们 4。
+3. **奖励记录区**：1524/1529/1531/1532/1537/1538/1542 参考服有奖励物品（如 1524 的
+   `+72=1000`），我们写 `FFFFFFFF`。
+4. **10090 快照的物品对没有"击杀+收集"双目标样本**：1557 是纯收集任务上的实测，
+   已按同一偏移写入，但"既有击杀又有收集"的快照样本仍缺。

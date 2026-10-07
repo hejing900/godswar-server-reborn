@@ -8,6 +8,7 @@ internal sealed class ScriptedLegacyByteTransport : ILegacyByteTransport
     private readonly byte[] _inbound;
     private readonly int[] _readChunks;
     private readonly MemoryStream _written = new();
+    private readonly List<byte[]> _writeChunks = [];
     private int _activeWrites;
     private int _disconnectStarted;
     private int _inboundOffset;
@@ -42,6 +43,17 @@ internal sealed class ScriptedLegacyByteTransport : ILegacyByteTransport
             lock (_writeGate)
             {
                 return _written.ToArray();
+            }
+        }
+    }
+
+    public IReadOnlyList<byte[]> WrittenChunks
+    {
+        get
+        {
+            lock (_writeGate)
+            {
+                return _writeChunks.Select(chunk => (byte[])chunk.Clone()).ToArray();
             }
         }
     }
@@ -85,6 +97,7 @@ internal sealed class ScriptedLegacyByteTransport : ILegacyByteTransport
             lock (_writeGate)
             {
                 _written.Write(copy);
+                _writeChunks.Add(copy);
                 WriteCount++;
             }
         }

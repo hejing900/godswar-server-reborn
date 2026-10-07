@@ -13,6 +13,10 @@ internal sealed class MainForm : Form
 {
     private readonly LootToolSettings _settings = LootToolSettings.Load();
     private readonly LootStore _store = new();
+    private readonly CharacterPanel _characterPanel = new();
+    private readonly MonsterSpawnPanel _monsterPanel = new();
+    private readonly ExportPanel _exportPanel = new();
+    private readonly NpcDialoguePanel _npcPanel = new();
     private readonly PetPanel _petPanel = new();
     private readonly FarmPanel _farmPanel = new();
     private readonly QuestRewardPanel _questPanel = new();
@@ -50,7 +54,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Godswar GM 工具（利兰丁农场 + 掉落表 + 任务奖励 + 宠物档位）";
+        Text = "Godswar GM 工具（角色与标记点 + 利兰丁农场 + 掉落表 + 任务奖励 + 宠物档位）";
         Width = 1420;
         Height = 880;
         StartPosition = FormStartPosition.CenterScreen;
@@ -87,6 +91,10 @@ internal sealed class MainForm : Form
         }
 
         await _store.DisposeAsync();
+        await _characterPanel.DisposeAsync();
+        await _monsterPanel.DisposeAsync();
+        await _exportPanel.DisposeAsync();
+        await _npcPanel.DisposeAsync();
         await _petPanel.DisposeAsync();
         await _farmPanel.DisposeAsync();
         await _questPanel.DisposeAsync();
@@ -120,6 +128,18 @@ internal sealed class MainForm : Form
         petPage.Controls.Add(_petPanel);
         var farmPage = new TabPage("利兰丁农场");
         farmPage.Controls.Add(_farmPanel);
+        var characterPage = new TabPage("角色与标记点");
+        characterPage.Controls.Add(_characterPanel);
+        var monsterPage = new TabPage("刷怪");
+        monsterPage.Controls.Add(_monsterPanel);
+        var exportPage = new TabPage("导出/导入");
+        exportPage.Controls.Add(_exportPanel);
+        var npcPage = new TabPage("NPC 对话");
+        npcPage.Controls.Add(_npcPanel);
+        tabs.TabPages.Add(characterPage);
+        tabs.TabPages.Add(monsterPage);
+        tabs.TabPages.Add(exportPage);
+        tabs.TabPages.Add(npcPage);
         tabs.TabPages.Add(farmPage);
         tabs.TabPages.Add(lootPage);
         tabs.TabPages.Add(questPage);
@@ -459,6 +479,7 @@ internal sealed class MainForm : Form
             _store.Connect(_settings.BuildConnectionString());
             _connection.SetStatus("连接正常", healthy: true);
             await ReadAllAsync();
+            await ConnectCharacterPanelAsync();
             await ConnectPetPanelAsync();
             await ConnectFarmPanelAsync();
             await ConnectQuestPanelAsync();
@@ -536,6 +557,51 @@ internal sealed class MainForm : Form
         }
     }
 
+    /// <summary>
+    /// The character/waypoint tab reads its own connection as well: the marker
+    /// table only exists once the server migration has run, and a database
+    /// without it must still leave every other tab usable.
+    /// </summary>
+    private async Task ConnectCharacterPanelAsync()
+    {
+        try
+        {
+            await _characterPanel.ConnectAndReadAsync(_settings.BuildConnectionString());
+        }
+        catch (Exception ex)
+        {
+            _characterPanel.SetStatus($"角色页读取失败：{ex.Message}");
+        }
+
+        try
+        {
+            await _monsterPanel.ConnectAndReadAsync(_settings.BuildConnectionString());
+        }
+        catch (Exception ex)
+        {
+            _monsterPanel.SetStatus($"刷怪页读取失败：{ex.Message}");
+        }
+
+        try
+        {
+            await _exportPanel.ConnectAndReadAsync(_settings.BuildConnectionString());
+        }
+        catch (Exception ex)
+        {
+            _exportPanel.SetStatus($"导出页读取失败：{ex.Message}");
+        }
+
+        try
+        {
+            _npcPanel.SetClientRoot(_settings.ClientRoot);
+            await _npcPanel.ConnectAndReadAsync(_settings.BuildConnectionString());
+        }
+        catch (Exception ex)
+        {
+            _npcPanel.SetStatus($"NPC 页读取失败：{ex.Message}");
+        }
+    }
+
     private async Task ReadAllAsync()    {
         if (!_store.IsConnected)
         {
@@ -561,6 +627,43 @@ internal sealed class MainForm : Form
             _questPanel.SetAttributeColumnsVisible(_attributeColumnsAvailable);
             await LoadItemAttributesAsync();
             RefreshMonsterGrid();
+            try
+            {
+                await _characterPanel.ReadAsync();
+            }
+            catch (Exception ex)
+            {
+                _characterPanel.SetStatus($"角色页读取失败：{ex.Message}");
+            }
+
+            try
+            {
+                await _monsterPanel.ReadAsync();
+            }
+            catch (Exception ex)
+            {
+                _monsterPanel.SetStatus($"刷怪页读取失败：{ex.Message}");
+            }
+
+            try
+            {
+                await _exportPanel.RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                _exportPanel.SetStatus($"导出页读取失败：{ex.Message}");
+            }
+
+            try
+            {
+                _npcPanel.SetClientRoot(_settings.ClientRoot);
+                await _npcPanel.ReadAsync();
+            }
+            catch (Exception ex)
+            {
+                _npcPanel.SetStatus($"NPC 页读取失败：{ex.Message}");
+            }
+
             try
             {
                 await _petPanel.ReadAsync();

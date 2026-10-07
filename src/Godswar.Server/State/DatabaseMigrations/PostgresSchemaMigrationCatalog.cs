@@ -370,6 +370,13 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateZeusLuckEntries(),
         CreateZeusGiftLimitedStock(),
         CreateZeusGiftBankedReward(),
-        CreateZeusGiftLimitedStockPerCamp()
+        CreateZeusGiftLimitedStockPerCamp(),
+        CreateGmWaypoints(),
+        CreateGmMonsterOverrides(),
+        CreateGmNpcContent(),
+        CreateCharacterQuestDaily(),
+        CreateQuestRewardCompletionClaims(),
+        CreateQuestWideProgress(),
+        CreateHolySuitSetBonus()
     ];
 }
