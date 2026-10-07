@@ -59,6 +59,10 @@ Pet recall is fixed. Replacing equipment no longer leaves the old world presence
 ![工会系统界面：人物属性、装备面板与工会列表](docs/images/guild-system.png)
 
 
+<img width="1059" height="790" alt="image" src="https://github.com/user-attachments/assets/dcf97dbf-014b-45b2-aa80-aff9c35455ff" />
+
+
+
 
 
 
