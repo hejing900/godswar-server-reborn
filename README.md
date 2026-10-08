@@ -65,6 +65,10 @@ Pet recall is fixed. Replacing equipment no longer leaves the old world presence
 <img width="1059" height="790" alt="image" src="https://github.com/user-attachments/assets/dcf97dbf-014b-45b2-aa80-aff9c35455ff" />
 
 
+<img width="1030" height="812" alt="image" src="https://github.com/user-attachments/assets/82adbd0a-6062-4826-8e7d-db259b85eb2b" />
+
+
+
 
 
 
