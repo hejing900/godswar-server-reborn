@@ -6,6 +6,7 @@ If you're willing to help me, please contact hejing900@outlook.com
 如果你愿意帮助我，请联系hejing900@outlook.com
 
 
+<img width="1031" height="788" alt="image" src="https://github.com/user-attachments/assets/e629d794-b6f4-4f2b-b44f-e6aa49e0da3c" />
 
 
 
@@ -14,7 +15,6 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 <img width="1059" height="790" alt="image" src="https://github.com/user-attachments/assets/dcf97dbf-014b-45b2-aa80-aff9c35455ff" />
 
-<img width="1025" height="796" alt="image" src="https://github.com/user-attachments/assets/f6e30636-1f4c-4862-b488-5f876742e621" />
 
 任务系统已补齐接近全量的客户端任务规则，包含击杀、收集、探索、捕捉、对话交付、任务卷轴及部分战场任务。新增任务查询（Search），修复查询文字重叠和任务删除问题，同时可接任务上限为20个。
 
