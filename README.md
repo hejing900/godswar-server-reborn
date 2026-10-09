@@ -5,6 +5,10 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 如果你愿意帮助我，请联系hejing900@outlook.com
 
+补全所有生活技能学习、升级、配方、制造。
+
+修复所有药水效果、补齐所有任务卷轴传送卷轴效果、修复加成药水高阶效果到期后依然无法使用低阶的BUG、修复所有消耗物品没有发送删除图标封包的BUG
+
 
 <img width="1031" height="788" alt="image" src="https://github.com/user-attachments/assets/e629d794-b6f4-4f2b-b44f-e6aa49e0da3c" />
 
