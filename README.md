@@ -5,6 +5,17 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 如果你愿意帮助我，请联系hejing900@outlook.com
 
+
+
+
+
+![工会系统界面：人物属性、装备面板与工会列表](docs/images/guild-system.png)
+
+
+<img width="1059" height="790" alt="image" src="https://github.com/user-attachments/assets/dcf97dbf-014b-45b2-aa80-aff9c35455ff" />
+
+<img width="1025" height="796" alt="image" src="https://github.com/user-attachments/assets/f6e30636-1f4c-4862-b488-5f876742e621" />
+
 任务系统已补齐接近全量的客户端任务规则，包含击杀、收集、探索、捕捉、对话交付、任务卷轴及部分战场任务。新增任务查询（Search），修复查询文字重叠和任务删除问题，同时可接任务上限为20个。
 
 主线按各自独立的任务链发布，支持每日任务、严格同等级发布及已接任务升级后继续完成。收集任务每次击杀匹配怪物有15%几率获得一个任务计数；奖励优先使用GM工具覆盖。保留已有可完成任务的目标和数量，缺失数量的参考来源已记录，未补刷缺失怪物。客户端正文修正和完整游戏内验收仍待完成。详见 [任务系统规则与来源](docs/quest-objective-source-audit-20261007.md) 和 [独立主线规则](docs/quest-independent-mainlines-20261007.md)。
@@ -55,17 +66,6 @@ All pet skills and all pet features are implemented; guild building creation, wo
 All Zeus Gift features are added (daily gift, weekly prayer stone, the Loyal Devotee and Praying Saint NPC dialogues, level and time-window limits, substitutes and odds, two shelves, the 8-piece lucky set and 19 kinds of dust, limited stock, and server-wide prayer stone progress).
 
 Pet recall is fixed. Replacing equipment no longer leaves the old world presence behind.
-
-
-
-
-![工会系统界面：人物属性、装备面板与工会列表](docs/images/guild-system.png)
-
-
-<img width="1059" height="790" alt="image" src="https://github.com/user-attachments/assets/dcf97dbf-014b-45b2-aa80-aff9c35455ff" />
-
-
-<img width="1030" height="812" alt="image" src="https://github.com/user-attachments/assets/82adbd0a-6062-4826-8e7d-db259b85eb2b" />
 
 
 
