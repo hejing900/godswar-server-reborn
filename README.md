@@ -5,6 +5,10 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 如果你愿意帮助我，请联系hejing900@outlook.com
 
+
+此项目单人无力负担所需测试时间，不再更新实际代码，只更新当前进度
+
+
 2026/10/09
 
 补全所有生活技能学习、升级、配方、制造。
@@ -14,6 +18,10 @@ If you're willing to help me, please contact hejing900@outlook.com
 2026/10/10
 
 添加所有地图刷怪数据，包含各地图卫兵，不包含迈锡尼以及某些世界BOSS，同时怪物的攻击防御属性尚不明确，暂无获取渠道。
+
+2026/10/11
+
+更改怪物攻击=等级基础攻击 × 技能系数”写入物攻和魔攻，再按技能类型选择哪种防御结算
 
 
 <img width="1031" height="788" alt="image" src="https://github.com/user-attachments/assets/e629d794-b6f4-4f2b-b44f-e6aa49e0da3c" />
