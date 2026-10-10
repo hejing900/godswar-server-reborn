@@ -4,10 +4,13 @@
 If you're willing to help me, please contact hejing900@outlook.com
 
 如果你愿意帮助我，请联系hejing900@outlook.com
-
+2026/10/09
 补全所有生活技能学习、升级、配方、制造。
 
 修复所有药水效果、补齐所有任务卷轴传送卷轴效果、修复加成药水高阶效果到期后依然无法使用低阶的BUG、修复所有消耗物品没有发送删除图标封包的BUG
+
+2026/10/10
+添加所有地图刷怪数据，包含各地图卫兵，不包含迈锡尼以及某些世界BOSS，同时怪物的攻击防御属性尚不明确，暂无获取渠道。
 
 
 <img width="1031" height="788" alt="image" src="https://github.com/user-attachments/assets/e629d794-b6f4-4f2b-b44f-e6aa49e0da3c" />
