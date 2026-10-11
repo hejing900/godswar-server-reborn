@@ -29,6 +29,14 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 增加组队经验共享加成，好友，黑名单，摆摊，PK等级保护
 
+2026/10/12
+
+修复人物普通攻击错误使用魔法攻击以及添加公共CD，修复死亡合体没有解除以及所有地图正确接入死亡流程。
+
+
+
+
+
 <img width="1928" height="800" alt="image" src="https://github.com/user-attachments/assets/cb7d19ae-b23b-4a62-ac98-31f1c9edbfc8" />
 
 
