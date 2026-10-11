@@ -29,6 +29,7 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 增加组队经验共享加成，好友，黑名单，摆摊，PK等级保护
 
+<img width="1928" height="800" alt="image" src="https://github.com/user-attachments/assets/cb7d19ae-b23b-4a62-ac98-31f1c9edbfc8" />
 
 
 
