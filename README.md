@@ -23,6 +23,15 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 更改怪物攻击=等级基础攻击 × 技能系数”写入物攻和魔攻，再按技能类型选择哪种防御结算
 
+增加精英怪物，BOSS怪物释放技能如冰冻/定身/流血等效果
+
+修复怪物追击结束后原地消失的BUG
+
+增加组队经验共享加成，好友，黑名单，摆摊，PK等级保护
+
+
+
+
 
 <img width="1031" height="788" alt="image" src="https://github.com/user-attachments/assets/e629d794-b6f4-4f2b-b44f-e6aa49e0da3c" />
 
