@@ -33,6 +33,13 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 修复人物普通攻击错误使用魔法攻击以及添加公共CD，修复死亡合体没有解除以及所有地图正确接入死亡流程。
 
+2026/10/13
+
+增加暑期兑换，坐骑饲养员全功能，修复原石分解粉尘。
+ 
+部分重构服务端逻辑，采用ini配置文件执行物品的使用和npc的功能
+
+<img width="1022" height="788" alt="image" src="https://github.com/user-attachments/assets/cb99efdc-74a6-4dc4-8867-22584878f2c1" />
 
 
 
