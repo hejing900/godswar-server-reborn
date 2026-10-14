@@ -39,6 +39,19 @@ If you're willing to help me, please contact hejing900@outlook.com
  
 部分重构服务端逻辑，采用ini配置文件执行物品的使用和npc的功能
 
+2026/10/14
+
+修复任务系统接取不显示奖励的BUG
+
+新增宗师技能兑换
+
+补齐所有地图NPC以及温泉关，底比斯的仓库商店和部分功能（不包含活动地图）
+
+
+
+
+
+
 <img width="1022" height="788" alt="image" src="https://github.com/user-attachments/assets/cb99efdc-74a6-4dc4-8867-22584878f2c1" />
 
 
