@@ -54,7 +54,9 @@ If you're willing to help me, please contact hejing900@outlook.com
 新增配置文件装备属性配置
 
 
+2026/10/16
 
+修复PVP系统
 
 
 
