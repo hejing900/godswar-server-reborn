@@ -58,6 +58,22 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 修复PVP系统
 
+修复星座经验累计，升级
+
+修复部分物品
+
+
+
+
+2026/10/17
+
+修复登录崩溃问题
+
+增加自动拾取
+
+恢复所有称谓（不包含未部署的活动称谓）
+
+
 
 
 
