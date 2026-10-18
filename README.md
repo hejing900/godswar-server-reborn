@@ -78,6 +78,7 @@ If you're willing to help me, please contact hejing900@outlook.com
 重构公会系统，所有工会功能全部回归，包括但不限于工会任务，工会双倍，供奉当前消耗和加成
 
 
+<img width="1022" height="786" alt="image" src="https://github.com/user-attachments/assets/5a0415f3-5d51-4fe8-8398-d9b80ce7636a" />
 
 
 
