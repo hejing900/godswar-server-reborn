@@ -73,7 +73,9 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 恢复所有称谓（不包含未部署的活动称谓）
 
+2026/10/18
 
+重构公会系统，所有工会功能全部回归，包括但不限于工会任务，工会双倍，供奉当前消耗和加成
 
 
 
