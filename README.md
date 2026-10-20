@@ -81,6 +81,12 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 修复品都斯战场活动
 
+2026/10/20
+
+新增失落之书活动
+
+修复宠物捕捉，新增商旅宝库活动
+
 
 <img width="1022" height="786" alt="image" src="https://github.com/user-attachments/assets/5a0415f3-5d51-4fe8-8398-d9b80ce7636a" />
 
