@@ -85,7 +85,16 @@ If you're willing to help me, please contact hejing900@outlook.com
 
 新增失落之书活动
 
-修复宠物捕捉，新增商旅宝库活动
+修复宠物捕捉
+
+新增商旅宝库活动失败
+
+新增健康跑活动
+
+修复部分职业回包未添加技能cd
+
+BOSS刷新正确接入频道广播
+
 
 
 <img width="1022" height="786" alt="image" src="https://github.com/user-attachments/assets/5a0415f3-5d51-4fe8-8398-d9b80ce7636a" />
