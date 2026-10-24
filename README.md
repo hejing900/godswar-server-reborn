@@ -115,7 +115,9 @@ BOSS刷新正确接入频道广播
 
 修复迷宫活动
 
+2026/10/24
 
+重构掉落拾取
 
 <img width="1022" height="786" alt="image" src="https://github.com/user-attachments/assets/5a0415f3-5d51-4fe8-8398-d9b80ce7636a" />
 
