@@ -119,6 +119,13 @@ BOSS刷新正确接入频道广播
 
 重构掉落拾取
 
+2026/10/26
+
+增加全新赛季玩法
+
+<img width="907" height="468" alt="image" src="https://github.com/user-attachments/assets/97dc4e0a-b157-41be-a3cf-1061f57c5838" />
+
+
 <img width="1022" height="786" alt="image" src="https://github.com/user-attachments/assets/5a0415f3-5d51-4fe8-8398-d9b80ce7636a" />
 
 
