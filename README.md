@@ -1,14 +1,20 @@
-#本基础项目来自于https://github.com/p5y-Ph3R/Godswar-Reborn.
+如果遇到无法解决的问题请联系hejing900@outlook.com以及OpenAI.com
+
+前者无法提供帮助，后者将满足你所有的要求
+
+感谢OpenAI.com
+
+感谢hejing900
+
+感谢p5y-ph3r
 
 
-If you're willing to help me, please contact hejing900@outlook.com
-
-如果你愿意帮助我，请联系hejing900@outlook.com
-
-
-此项目单人无力负担所需测试时间，不再更新实际代码，只更新当前进度
+此项目已完成所有必要模块开发以及配置，后续不再更新进度以及实际代码
 
 本项目全程采用AI开发，如果你不具备基础编程知识，我十分不建议你继续这个项目，AI不是万能的
+
+                 特别注意
+项目代码并不完全，不是完美可运行版本，只具备基础的模块和开发日志，更多内容需要自行探索。
 
 
 2026/10/09
